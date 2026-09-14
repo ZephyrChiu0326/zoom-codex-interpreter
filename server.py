@@ -126,7 +126,8 @@ LIBRETRANSLATE_LANGUAGE_MAP = {
 def default_provider_config() -> dict[str, Any]:
     return {
         "defaultProvider": "auto",
-        "fallbackOrder": ["deepl", "microsoft", "google", "libretranslate", "codex"],
+        "fallbackOrder": ["google", "microsoft", "deepl", "libretranslate", "codex"],
+        "network": {"proxy": ""},
         "providers": {
             "codex": {},
             "deepl": {
@@ -165,6 +166,8 @@ def load_provider_config(path: Path) -> dict[str, Any]:
         config["defaultProvider"] = user_config["defaultProvider"]
     if isinstance(user_config.get("fallbackOrder"), list):
         config["fallbackOrder"] = [str(item) for item in user_config["fallbackOrder"]]
+    if isinstance(user_config.get("network"), dict):
+        config["network"].update(user_config["network"])
     providers = user_config.get("providers")
     if isinstance(providers, dict):
         for name, values in providers.items():
@@ -209,6 +212,8 @@ class TranslationRuntime:
         self.timeout = timeout
         self.cache = TranslationCache()
         self.provider_config = provider_config or default_provider_config()
+        network = self.provider_config.get("network") or {}
+        self.proxy = str(network.get("proxy") or "").strip()
 
     @property
     def responses_url(self) -> str:
@@ -522,8 +527,15 @@ class TranslationRuntime:
         if body is not None:
             request_headers.setdefault("Content-Type", "application/json")
         request = urllib.request.Request(url, data=body, headers=request_headers, method=method)
+        hostname = (urllib.parse.urlparse(url).hostname or "").lower()
+        opener = None
+        if self.proxy and hostname not in {"127.0.0.1", "localhost", "::1"}:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy})
+            )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            open_url = opener.open if opener is not None else urllib.request.urlopen
+            with open_url(request, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:800]

@@ -207,6 +207,18 @@ https://api.deepl.com/v2/translate
 }
 ```
 
+Google Cloud Translation API 需要启用结算并创建 API Key。扩展不会使用非官方的 Google 网页翻译接口，因为该接口容易被限流或返回验证页面。
+
+如果在中国大陆使用 Google API，建议设置本机代理：
+
+```json
+"network": {
+  "proxy": "http://127.0.0.1:7897"
+}
+```
+
+端口按你本机的代理软件设置修改。没有配置 Google API Key 时，自动模式会跳过 Google 并使用下一个可用服务。
+
 ### LibreTranslate
 
 ```json
@@ -221,14 +233,14 @@ https://api.deepl.com/v2/translate
 ### 自动回退顺序
 
 ```json
-"fallbackOrder": ["deepl", "microsoft", "google", "libretranslate", "codex"]
+"fallbackOrder": ["google", "microsoft", "deepl", "libretranslate", "codex"]
 ```
 
 推荐顺序：
 
-1. DeepL：准确性和语言自然度较好
+1. Google Cloud Translation：覆盖广、速度快
 2. Microsoft Translator：稳定、语言覆盖广
-3. Google Cloud Translation：覆盖广、速度快
+3. DeepL：准确性和语言自然度较好
 4. LibreTranslate：本地或私有部署
 5. Codex AI：上下文和术语一致性最好
 
@@ -266,13 +278,13 @@ AI / 云翻译服务：DeepL / Microsoft / Google / LibreTranslate / 自动选�
 Chrome 用户：
 
 ```text
-dist/ZoomCodexInterpreter-chrome-v1.0.9.zip
+dist/ZoomCodexInterpreter-chrome-v1.0.10.zip
 ```
 
 Edge 用户：
 
 ```text
-dist/ZoomCodexInterpreter-edge-v1.0.9.zip
+dist/ZoomCodexInterpreter-edge-v1.0.10.zip
 ```
 
 对方解压后：
@@ -296,7 +308,7 @@ Edge：
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.9.zip
+dist/ZoomCodexInterpreter-full-v1.0.10.zip
 ```
 
 ## 共享更新进度
@@ -313,7 +325,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.9`
+- 每次版本更新使用一个 Git 标签，例如 `v1.0.10`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -327,13 +339,13 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.9.bundle
+dist/ZoomCodexInterpreter-v1.0.10.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.9.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v1.0.10.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。

@@ -1,9 +1,9 @@
 {
   "defaultProvider": "auto",
   "fallbackOrder": [
-    "deepl",
-    "microsoft",
     "google",
+    "microsoft",
+    "deepl",
     "libretranslate",
     "codex"
   ],
@@ -27,5 +27,8 @@
       "apiKey": ""
     },
     "codex": {}
+  },
+  "network": {
+    "proxy": ""
   }
 }

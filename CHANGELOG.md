@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.10
+
+- 将 Google Cloud Translation 设为自动回退首位
+- 新增 server 网络代理配置，支持通过本机代理访问 Google API
+- 完善 Google Cloud Translation API Key 配置说明
+- 未配置 Google Key 时自动回退到下一个可用服务
+
 ## v1.0.9
 
 - 新增 DeepL 专业翻译接入
