@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Zoom Codex Interpreter",
-  "version": "1.0.5",
-  "description": "Translate Zoom web live captions in near real time using the local Codex model proxy.",
+  "version": "1.0.6",
+  "description": "Translate Zoom web live captions in near real time using the local Codex model proxy (Chrome and Edge compatible).",
   "permissions": [
     "storage",
     "tabs"
@@ -21,7 +21,13 @@
   },
   "action": {
     "default_title": "Zoom Codex Interpreter",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {
@@ -40,5 +46,11 @@
       "all_frames": true,
       "match_about_blank": true
     }
-  ]
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

@@ -7,8 +7,9 @@ from pathlib import Path
 print(json.loads(Path('extension/manifest.json').read_text())['version'])
 PY
 )
-python3 scripts/build_release.py
+rm -rf dist
 mkdir -p dist
+python3 scripts/build_release.py
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git bundle create "dist/ZoomCodexInterpreter-v${VERSION}.bundle" --all
 else

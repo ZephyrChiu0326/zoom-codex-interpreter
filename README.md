@@ -1,6 +1,6 @@
 # Zoom Codex Interpreter
 
-Zoom 网页版实时字幕翻译工具：读取 Zoom 的实时字幕，调用本机 Codex 模型代理翻译，并在 Zoom 页面显示紧凑字幕条。
+Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读取 Zoom 的实时字幕，调用本机 Codex 模型代理翻译，并在 Zoom 页面显示紧凑字幕条。
 
 ## 功能
 
@@ -92,6 +92,16 @@ Zoom Codex Interpreter local service
 
 如果 Chrome 中文界面显示“加载未打包的扩展程序”，这就是英文版里的 `Load unpacked`。
 
+## 在 Microsoft Edge 中加载扩展
+
+1. 打开 `edge://extensions/`
+2. 打开左侧或页面中的“开发人员模式”
+3. 点击“加载解压缩的扩展”
+4. 选择解压后的 Edge 扩展目录
+5. 加载后刷新 Zoom 页面
+
+Edge 与 Chrome 使用同一套 Chromium 扩展代码。发布包会分别生成 Chrome 版和 Edge 版。
+
 ## 在 Zoom 中使用
 
 1. 打开 Zoom 网页版会议
@@ -116,23 +126,40 @@ Zoom Codex Interpreter local service
 
 普通用户只需要扩展文件，不需要服务端代码：
 
+Chrome 用户：
+
 ```text
-dist/ZoomCodexInterpreter-extension-v1.0.5.zip
+dist/ZoomCodexInterpreter-chrome-v1.0.6.zip
+```
+
+Edge 用户：
+
+```text
+dist/ZoomCodexInterpreter-edge-v1.0.6.zip
 ```
 
 对方解压后：
+
+Chrome：
 
 1. 打开 `chrome://extensions/`
 2. 开启开发者模式
 3. 点击“加载未打包的扩展程序”
 4. 选择解压后的目录
 
-注意：Chrome 可能不允许直接安装 `.crx`，因此推荐分享 ZIP + “加载未打包扩展”。
+Edge：
+
+1. 打开 `edge://extensions/`
+2. 开启开发人员模式
+3. 点击“加载解压缩的扩展”
+4. 选择解压后的目录
+
+注意：Chrome/Edge 可能不允许直接安装 `.crx`，因此推荐分享 ZIP + “加载未打包扩展”。
 
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.5.zip
+dist/ZoomCodexInterpreter-full-v1.0.6.zip
 ```
 
 ## 共享更新进度
@@ -149,7 +176,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.5`
+- 每次版本更新使用一个 Git 标签，例如 `v1.0.6`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -163,13 +190,13 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.5.bundle
+dist/ZoomCodexInterpreter-v1.0.6.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.5.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v1.0.6.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。
@@ -182,7 +209,9 @@ git clone ZoomCodexInterpreter-v1.0.5.bundle zoom-codex-interpreter
 
 生成在 `dist/`：
 
-- `ZoomCodexInterpreter-extension-vX.Y.Z.zip`：普通用户加载扩展
+- `ZoomCodexInterpreter-chrome-vX.Y.Z.zip`：Chrome 用户加载扩展
+- `ZoomCodexInterpreter-edge-vX.Y.Z.zip`：Edge 用户加载扩展
+- `ZoomCodexInterpreter-extension-vX.Y.Z.zip`：兼容旧命名的 Chrome 版
 - `ZoomCodexInterpreter-full-vX.Y.Z.zip`：完整项目
 - `ZoomCodexInterpreter-vX.Y.Z.bundle`：完整 Git 历史
 - `SHA256SUMS`：文件校验

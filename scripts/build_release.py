@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Build shareable ZIP archives for Zoom Codex Interpreter."""
+"""Build shareable Chrome and Edge ZIP archives for Zoom Codex Interpreter."""
 
 from __future__ import annotations
 
 import json
-import os
-import stat
+import shutil
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -34,20 +33,43 @@ def should_exclude(path: Path) -> bool:
 
 def add_file(archive: zipfile.ZipFile, source: Path, arcname: str) -> None:
     info = zipfile.ZipInfo.from_file(source, arcname)
-    mode = source.stat().st_mode
-    info.external_attr = (mode & 0xFFFF) << 16
-    with source.open("rb") as handle:
-        archive.writestr(info, handle.read(), compress_type=zipfile.ZIP_DEFLATED)
+    info.external_attr = (source.stat().st_mode & 0xFFFF) << 16
+    archive.writestr(info, source.read_bytes(), compress_type=zipfile.ZIP_DEFLATED)
 
 
-def build_zip(target: Path, base: Path, *, extension_only: bool) -> None:
+def add_bytes(archive: zipfile.ZipFile, data: bytes, arcname: str) -> None:
+    info = zipfile.ZipInfo(arcname)
+    info.external_attr = 0o644 << 16
+    archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
+
+
+def browser_manifest(browser: str) -> bytes:
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if browser == "edge":
+        data["name"] = "Zoom Codex Interpreter for Edge"
+        data["description"] = (
+            "Translate Zoom web live captions in near real time in Microsoft Edge "
+            "using the local Codex model proxy."
+        )
+    return (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def build_extension_zip(target: Path, browser: str) -> None:
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        if extension_only:
-            for path in sorted(EXTENSION.rglob("*")):
-                if path.is_file() and not should_exclude(path.relative_to(EXTENSION)):
-                    add_file(archive, path, str(path.relative_to(EXTENSION)))
-            return
+        for path in sorted(EXTENSION.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(EXTENSION)
+            if should_exclude(relative):
+                continue
+            if relative == Path("manifest.json"):
+                add_bytes(archive, browser_manifest(browser), "manifest.json")
+            else:
+                add_file(archive, path, str(relative))
 
+
+def build_full_zip(target: Path) -> None:
+    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(ROOT.rglob("*")):
             if not path.is_file():
                 continue
@@ -68,31 +90,38 @@ def write_update_manifest(v: str) -> None:
             "version": v,
             "releaseDate": date.today().isoformat(),
             "extensionDownload": f"ZoomCodexInterpreter-extension-v{v}.zip",
+            "chromeDownload": f"ZoomCodexInterpreter-chrome-v{v}.zip",
+            "edgeDownload": f"ZoomCodexInterpreter-edge-v{v}.zip",
             "fullDownload": f"ZoomCodexInterpreter-full-v{v}.zip",
         }
     )
-    path = DIST / "update.json"
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (DIST / "update.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def write_share_readme(v: str) -> None:
-    path = DIST / "README-SHARE.txt"
-    path.write_text(
+    (DIST / "README-SHARE.txt").write_text(
         "\n".join(
             [
                 "Zoom Codex Interpreter share files",
                 "",
                 f"Version: {v}",
                 "",
-                "For normal users:",
-                f"  ZoomCodexInterpreter-extension-v{v}.zip",
-                "  Unzip it, then load that folder from chrome://extensions -> Load unpacked.",
+                "Google Chrome:",
+                f"  ZoomCodexInterpreter-chrome-v{v}.zip",
+                "  Unzip, then load that folder from chrome://extensions -> Load unpacked.",
+                "",
+                "Microsoft Edge:",
+                f"  ZoomCodexInterpreter-edge-v{v}.zip",
+                "  Unzip, then load that folder from edge://extensions -> Load unpacked.",
+                "",
+                "Compatibility alias:",
+                f"  ZoomCodexInterpreter-extension-v{v}.zip (same as the Chrome build)",
                 "",
                 "For collaborators:",
                 f"  ZoomCodexInterpreter-full-v{v}.zip",
                 "  Complete project, including server.py and release scripts.",
                 "",
-                f"Git history bundle:",
+                "Git history bundle:",
                 f"  ZoomCodexInterpreter-v{v}.bundle",
                 "  Clone with:",
                 f"    git clone ZoomCodexInterpreter-v{v}.bundle zoom-codex-interpreter",
@@ -109,14 +138,18 @@ def write_share_readme(v: str) -> None:
 def main() -> int:
     v = version()
     DIST.mkdir(exist_ok=True)
-    extension_zip = DIST / f"ZoomCodexInterpreter-extension-v{v}.zip"
+    chrome_zip = DIST / f"ZoomCodexInterpreter-chrome-v{v}.zip"
+    edge_zip = DIST / f"ZoomCodexInterpreter-edge-v{v}.zip"
+    alias_zip = DIST / f"ZoomCodexInterpreter-extension-v{v}.zip"
     full_zip = DIST / f"ZoomCodexInterpreter-full-v{v}.zip"
-    build_zip(extension_zip, EXTENSION, extension_only=True)
-    build_zip(full_zip, ROOT, extension_only=False)
+    build_extension_zip(chrome_zip, "chrome")
+    build_extension_zip(edge_zip, "edge")
+    shutil.copyfile(chrome_zip, alias_zip)
+    build_full_zip(full_zip)
     write_update_manifest(v)
     write_share_readme(v)
-    print(extension_zip)
-    print(full_zip)
+    for path in (chrome_zip, edge_zip, alias_zip, full_zip):
+        print(path)
     return 0
 
 

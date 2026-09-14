@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.6
+
+- 新增 Microsoft Edge 兼容扩展包
+- 新增 Chrome / Edge 双浏览器发布文件
+- 新增扩展图标
+- 增加 Edge 安装与分享说明
+
 ## v1.0.5
 
 - 新增紧凑字幕条模式
