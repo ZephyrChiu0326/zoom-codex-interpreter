@@ -54,3 +54,10 @@ input[type="range"] { width: 100%; padding: 0; background: transparent; border: 
 .engine-status { margin: -2px 0 10px; color: #9ea8b4; font-size: 11px; }
 .engine-status.ok { color: #9ae8ca; }
 .engine-status.error { color: #ffc3c3; }
+
+.update-notice { margin: -2px 0 10px; padding: 8px 9px; border-radius: 8px; background: rgba(56,211,159,.12); color: #bdf5df; font-size: 12px; line-height: 1.35; }
+.update-notice.error { background: rgba(255,107,107,.1); color: #ffc3c3; }
+.update-notice.up-to-date { background: rgba(255,255,255,.055); color: #9ea8b4; }
+.update-notice.hidden { display: none !important; }
+.update-notice a { color: #9ae8ca; font-weight: 700; }
+footer span { display: flex; gap: 10px; align-items: center; }

@@ -1,5 +1,9 @@
 # Zoom Codex Interpreter
 
+GitHub 仓库：https://github.com/ZephyrChiu0326/zoom-codex-interpreter
+
+Releases：https://github.com/ZephyrChiu0326/zoom-codex-interpreter/releases
+
 Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读取 Zoom 的实时字幕，可选择浏览器本地翻译或 Codex AI 翻译，并在 Zoom 页面显示紧凑字幕条。
 
 ## 功能
@@ -169,13 +173,13 @@ Edge 是否支持本地翻译取决于 Edge 版本和系统语言包。如果 Ed
 Chrome 用户：
 
 ```text
-dist/ZoomCodexInterpreter-chrome-v1.0.7.zip
+dist/ZoomCodexInterpreter-chrome-v1.0.8.zip
 ```
 
 Edge 用户：
 
 ```text
-dist/ZoomCodexInterpreter-edge-v1.0.7.zip
+dist/ZoomCodexInterpreter-edge-v1.0.8.zip
 ```
 
 对方解压后：
@@ -199,7 +203,7 @@ Edge：
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.7.zip
+dist/ZoomCodexInterpreter-full-v1.0.8.zip
 ```
 
 ## 共享更新进度
@@ -216,7 +220,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.7`
+- 每次版本更新使用一个 Git 标签，例如 `v1.0.8`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -230,16 +234,35 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.7.bundle
+dist/ZoomCodexInterpreter-v1.0.8.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.7.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v1.0.8.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。
+
+## 自动更新
+
+商店发布详细步骤见 [STORE_PUBLISHING.md](STORE_PUBLISHING.md)。
+
+扩展会定时检查 GitHub Releases，并在发现新版本时：
+
+- 在扩展图标上显示 `NEW` 标记
+- 在弹窗里显示新版本号
+- 提供 GitHub Release 下载入口
+
+注意：通过“加载未打包扩展”安装时，Chrome/Edge 不允许扩展静默替换自身文件。因此 GitHub Releases 提供的是“自动检查 + 提示更新 + 下载新版本”，用户仍需下载新版本并在扩展页面点击“重新加载”。
+
+如果需要真正静默自动更新，需要发布到：
+
+- Chrome Web Store
+- Microsoft Edge Add-ons
+
+发布后，浏览器会自动升级扩展，用户不需要手动重新加载。
 
 ## 打包发布
 

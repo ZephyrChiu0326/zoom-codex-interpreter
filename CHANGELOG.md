@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.8
+
+- 新增 GitHub Release 自动更新检查
+- 发现新版本时扩展图标显示 NEW 标记
+- 扩展弹窗显示新版本号和下载入口
+- 支持定时检查 GitHub Releases
+
 ## v1.0.7
 
 - 新增本地翻译 / AI 翻译双引擎

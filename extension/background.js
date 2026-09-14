@@ -187,6 +187,116 @@ async function health() {
   }
 }
 
+
+const UPDATE_REPO = "ZephyrChiu0326/zoom-codex-interpreter";
+const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
+const UPDATE_ALARM = "zoom-codex-interpreter-update-check";
+const UPDATE_STORAGE_KEY = "updateStatus";
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function parseVersion(version) {
+  return String(version || "")
+    .replace(/^v/i, "")
+    .split(/[.+-]/)
+    .map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function isNewerVersion(remoteVersion, localVersion) {
+  const remote = parseVersion(remoteVersion);
+  const local = parseVersion(localVersion);
+  const length = Math.max(remote.length, local.length);
+  for (let index = 0; index < length; index += 1) {
+    const remotePart = remote[index] || 0;
+    const localPart = local[index] || 0;
+    if (remotePart > localPart) return true;
+    if (remotePart < localPart) return false;
+  }
+  return false;
+}
+
+async function updateBadge(status) {
+  if (status?.updateAvailable) {
+    await chrome.action.setBadgeText({ text: "NEW" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#38d39f" });
+    await chrome.action.setTitle({ title: `有新版本 v${status.latestVersion} 可更新` });
+  } else {
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "Zoom Codex Interpreter" });
+  }
+}
+
+async function checkForUpdates(force = false) {
+  const currentVersion = chrome.runtime.getManifest().version;
+  const stored = await chrome.storage.local.get(UPDATE_STORAGE_KEY);
+  const previous = stored[UPDATE_STORAGE_KEY] || {};
+  const now = Date.now();
+  if (!force && previous.checkedAt && now - previous.checkedAt < UPDATE_CHECK_INTERVAL_MS) {
+    return previous;
+  }
+
+  try {
+    const response = await fetch(`${UPDATE_API}?t=${now}`, {
+      cache: "no-store",
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!response.ok) throw new Error(`GitHub API HTTP ${response.status}`);
+    const data = await response.json();
+    const latestVersion = String(data.tag_name || data.name || "").replace(/^v/i, "");
+    const status = {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: isNewerVersion(latestVersion, currentVersion),
+      releaseUrl: data.html_url || `https://github.com/${UPDATE_REPO}/releases`,
+      notes: data.body || "",
+      publishedAt: data.published_at || "",
+      assets: Array.isArray(data.assets)
+        ? data.assets.map((asset) => ({ name: asset.name, url: asset.browser_download_url, size: asset.size }))
+        : [],
+      checkedAt: now,
+    };
+    await chrome.storage.local.set({ [UPDATE_STORAGE_KEY]: status });
+    await updateBadge(status);
+    return status;
+  } catch (error) {
+    const status = {
+      ok: false,
+      currentVersion,
+      error: error?.message || String(error),
+      checkedAt: now,
+    };
+    await chrome.storage.local.set({ [UPDATE_STORAGE_KEY]: status });
+    return status;
+  }
+}
+
+async function getUpdateStatus() {
+  const stored = await chrome.storage.local.get(UPDATE_STORAGE_KEY);
+  return stored[UPDATE_STORAGE_KEY] || {
+    ok: true,
+    currentVersion: chrome.runtime.getManifest().version,
+    updateAvailable: false,
+  };
+}
+
+function setupUpdateAlarm() {
+  chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 720, delayInMinutes: 1 });
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM) checkForUpdates(false);
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  setupUpdateAlarm();
+  checkForUpdates(false);
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  setupUpdateAlarm();
+  checkForUpdates(false);
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== "object") return false;
 
@@ -202,6 +312,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "translate") {
     translate(message.payload || {}).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "checkForUpdates") {
+    checkForUpdates(true).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "getUpdateStatus") {
+    getUpdateStatus().then(sendResponse);
     return true;
   }
 

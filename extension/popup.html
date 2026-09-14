@@ -18,6 +18,7 @@
 
       <div id="notice" class="notice">正在检查本地翻译服务…</div>
       <div id="engine-status" class="engine-status"></div>
+      <div id="update-notice" class="update-notice hidden"></div>
 
       <section class="row">
         <button id="toggle" class="primary">暂停</button>
@@ -90,7 +91,10 @@
 
       <footer>
         <span>字幕只发送到本机 <code>127.0.0.1:8765</code></span>
-        <button id="health" class="link">重新检查服务</button>
+        <span>
+          <button id="health" class="link">重新检查服务</button>
+          <button id="check-update" class="link">检查更新</button>
+        </span>
       </footer>
     </main>
     <script src="popup.js"></script>

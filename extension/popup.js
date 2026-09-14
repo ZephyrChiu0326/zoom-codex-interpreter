@@ -35,6 +35,8 @@ const elements = {
   serverDot: document.querySelector("#server-dot"),
   notice: document.querySelector("#notice"),
   engineStatus: document.querySelector("#engine-status"),
+  updateNotice: document.querySelector("#update-notice"),
+  checkUpdate: document.querySelector("#check-update"),
   toggle: document.querySelector("#toggle"),
   pick: document.querySelector("#pick"),
   diagnose: document.querySelector("#diagnose"),
@@ -135,6 +137,7 @@ async function refreshState() {
   renderSettings();
   await checkHealth();
   await refreshEngineStatus();
+  await checkForUpdates(false);
 }
 
 function renderSettings() {
@@ -177,6 +180,43 @@ async function diagnoseCaptions() {
     return;
   }
   elements.diagnosticResult.textContent = JSON.stringify(response, null, 2);
+}
+
+function renderUpdateStatus(status) {
+  if (!status) {
+    elements.updateNotice.className = "update-notice hidden";
+    elements.updateNotice.textContent = "";
+    return;
+  }
+  if (status.error) {
+    elements.updateNotice.className = "update-notice error";
+    elements.updateNotice.textContent = `检查更新失败：${status.error}`;
+    return;
+  }
+  if (!status.updateAvailable) {
+    elements.updateNotice.className = "update-notice up-to-date";
+    elements.updateNotice.textContent = `已是最新版本 v${status.currentVersion || status.latestVersion || ""}`;
+    return;
+  }
+  elements.updateNotice.className = "update-notice";
+  elements.updateNotice.textContent = `发现新版本 v${status.latestVersion}。 `;
+  const link = document.createElement("a");
+  link.href = status.releaseUrl;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "打开 GitHub Release 下载更新";
+  elements.updateNotice.appendChild(link);
+}
+
+async function checkForUpdates(force = false) {
+  const response = await chrome.runtime.sendMessage({ type: force ? "checkForUpdates" : "getUpdateStatus" });
+  if (force && response?.ok === false) {
+    elements.updateNotice.className = "update-notice error";
+    elements.updateNotice.textContent = `检查更新失败：${response.error || "未知错误"}`;
+    return response;
+  }
+  renderUpdateStatus(response);
+  return response;
 }
 
 async function refreshEngineStatus() {
@@ -242,6 +282,11 @@ elements.resetSelector.addEventListener("click", async () => {
   setNotice(response?.ok ? "已重置字幕区域，正在重新检测。" : "重置失败，请刷新 Zoom 页面。", response?.ok ? "ok" : "error");
 });
 elements.health.addEventListener("click", checkHealth);
+elements.checkUpdate.addEventListener("click", async () => {
+  elements.updateNotice.className = "update-notice";
+  elements.updateNotice.textContent = "正在检查更新…";
+  await checkForUpdates(true);
+});
 elements.sourceLang.addEventListener("change", () => saveSettings({ sourceLang: elements.sourceLang.value }));
 elements.targetLang.addEventListener("change", () => saveSettings({ targetLang: elements.targetLang.value }));
 elements.translationEngine.addEventListener("change", async () => {
