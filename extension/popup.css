@@ -50,3 +50,7 @@ code { color: #9ae8ca; }
 
 input[type="range"] { width: 100%; padding: 0; background: transparent; border: 0; }
 #font-size-value { color: #9ae8ca; font-weight: 700; }
+
+.engine-status { margin: -2px 0 10px; color: #9ea8b4; font-size: 11px; }
+.engine-status.ok { color: #9ae8ca; }
+.engine-status.error { color: #ffc3c3; }

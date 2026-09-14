@@ -126,7 +126,9 @@ def write_share_readme(v: str) -> None:
                 "  Clone with:",
                 f"    git clone ZoomCodexInterpreter-v{v}.bundle zoom-codex-interpreter",
                 "",
-                "The local translation server must be running on 127.0.0.1:8765.",
+                "Translation mode:",
+                "  Local mode: no server is required.",
+                "  AI mode: the local translation server must be running on 127.0.0.1:8765.",
                 "See README.md for setup instructions.",
                 "",
             ]

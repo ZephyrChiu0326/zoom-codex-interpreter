@@ -9,6 +9,7 @@
     enabled: true,
     sourceLang: "auto",
     targetLang: "zh-CN",
+    translationEngine: "auto",
     translationStyle: "natural",
     showOriginal: true,
     speakTranslation: false,
@@ -58,6 +59,8 @@
   let autoHistory = new Map();
   let remoteCaptionActive = false;
   let remoteDiagnostics = [];
+  const localTranslatorPromises = new Map();
+  const localTranslationCache = new Map();
   const captionCandidateSelectors = [
     '[aria-live="polite"]',
     '[aria-live="assertive"]',
@@ -532,7 +535,204 @@
     translationTimer = window.setTimeout(translatePending, wait);
   }
 
-  function translatePending() {
+  function normalizeLocalLanguage(lang) {
+    const value = String(lang || "").trim();
+    if (!value || value === "auto") return null;
+    const map = {
+      "zh-CN": "zh",
+      "zh-TW": "zh-Hant",
+      "zh-HK": "zh-Hant",
+      "pt-BR": "pt",
+      "pt-PT": "pt",
+    };
+    return map[value] || value.split("-")[0];
+  }
+
+  function localTranslatorApi() {
+    return globalThis.Translator || window.Translator || self.Translator || null;
+  }
+
+  function localLanguageDetectorApi() {
+    return globalThis.LanguageDetector || window.LanguageDetector || self.LanguageDetector || null;
+  }
+
+  async function detectLocalSourceLanguage(text) {
+    const API = localLanguageDetectorApi();
+    if (!API) return null;
+    try {
+      const detector = await API.create();
+      const results = await detector.detect(text);
+      const top = Array.isArray(results) ? results[0] : null;
+      return top?.detectedLanguage || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function getLocalTranslator(sourceLanguage, targetLanguage) {
+    const API = localTranslatorApi();
+    if (!API) throw new Error("LOCAL_UNAVAILABLE");
+    const key = `${sourceLanguage}->${targetLanguage}`;
+    if (localTranslatorPromises.has(key)) return localTranslatorPromises.get(key);
+
+    const promise = (async () => {
+      try {
+        if (typeof API.availability === "function") {
+          const availability = await API.availability({ sourceLanguage, targetLanguage });
+          if (availability === "unavailable") throw new Error("LOCAL_UNAVAILABLE");
+        }
+        return await API.create({
+          sourceLanguage,
+          targetLanguage,
+          monitor(monitor) {
+            monitor.addEventListener("downloadprogress", (event) => {
+              const loaded = Number(event?.loaded || 0);
+              const total = Number(event?.total || 1);
+              const percent = Math.max(0, Math.min(100, Math.round((total > 1 ? loaded / total : loaded) * 100)));
+              if (IS_TOP) setStatus(`正在下载本地翻译模型… ${percent}%`, "busy");
+            });
+          },
+        });
+      } catch (error) {
+        localTranslatorPromises.delete(key);
+        if (String(error?.message || error).includes("LOCAL_UNAVAILABLE")) throw error;
+        throw new Error(`LOCAL_DOWNLOAD_FAILED: ${error?.message || error}`);
+      }
+    })();
+    localTranslatorPromises.set(key, promise);
+    return promise;
+  }
+
+  function backgroundLocalTranslate(text) {
+    const payload = {
+      text,
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+    };
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "translateLocal", payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response?.ok) {
+          resolve(response.translation);
+        } else {
+          reject(new Error(response?.error || "LOCAL_UNAVAILABLE"));
+        }
+      });
+    });
+  }
+
+  async function localTranslate(text) {
+    if (!localTranslatorApi()) {
+      return backgroundLocalTranslate(text);
+    }
+
+    try {
+      const sourceLanguage = settings.sourceLang === "auto"
+        ? await detectLocalSourceLanguage(text)
+        : normalizeLocalLanguage(settings.sourceLang);
+      const targetLanguage = normalizeLocalLanguage(settings.targetLang);
+      if (!sourceLanguage || !targetLanguage) throw new Error("LOCAL_NO_LANGUAGE");
+
+      const targets = targetLanguage === "zh" ? ["zh", "zh-Hans"] : [targetLanguage];
+      let lastError = null;
+      for (const target of targets) {
+        const cacheKey = `${sourceLanguage}->${target}:${text}`;
+        if (localTranslationCache.has(cacheKey)) return localTranslationCache.get(cacheKey);
+        try {
+          const translator = await getLocalTranslator(sourceLanguage, target);
+          const result = await translator.translate(text);
+          const translation = String(result || "").trim();
+          if (!translation) throw new Error("LOCAL_EMPTY_RESULT");
+          localTranslationCache.set(cacheKey, translation);
+          return translation;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error("LOCAL_UNAVAILABLE");
+    } catch (error) {
+      try {
+        return await backgroundLocalTranslate(text);
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  function aiTranslate(payload) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "translate", payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response?.ok) {
+          resolve(response.translation);
+        } else {
+          reject(new Error(response?.error || "AI 翻译失败"));
+        }
+      });
+    });
+  }
+
+  function translationPayload(text) {
+    return {
+      text,
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+      translationStyle: settings.translationStyle,
+      glossary: settings.glossary,
+      meetingContext: settings.meetingContext,
+      context: recentPairs.slice(-4),
+    };
+  }
+
+  function withTimeout(promise, timeoutMs, code) {
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error(code)), timeoutMs);
+      promise.then(
+        (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          window.clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  async function translateWithEngine(text) {
+    const engine = settings.translationEngine || "auto";
+    const payload = translationPayload(text);
+
+    if (engine === "local") {
+      return { translation: await withTimeout(localTranslate(text), 15000, "LOCAL_TIMEOUT"), engine: "local" };
+    }
+    if (engine === "ai") {
+      return { translation: await aiTranslate(payload), engine: "ai" };
+    }
+
+    try {
+      return { translation: await withTimeout(localTranslate(text), 1500, "LOCAL_TIMEOUT"), engine: "local" };
+    } catch (localError) {
+      if (IS_TOP) setStatus("本地翻译不可用，切换到 AI…", "busy");
+      const translation = await aiTranslate(payload);
+      return { translation, engine: "ai", fallbackReason: localError?.message || String(localError) };
+    }
+  }
+
+  function friendlyTranslationError(error) {
+    const message = String(error?.message || error || "未知错误");
+    if (message.includes("LOCAL_UNAVAILABLE")) return "当前浏览器不支持本地翻译，请使用 AI 模式";
+    if (message.includes("LOCAL_NO_LANGUAGE")) return "本地模式无法自动检测语言，请设置源语言";
+    if (message.includes("LOCAL_DOWNLOAD_FAILED")) return `本地翻译模型下载失败：${message.split(":").slice(1).join(":").trim()}`;
+    if (message.includes("LOCAL_EMPTY_RESULT")) return "本地翻译没有返回结果";
+    if (message.includes("LOCAL_TIMEOUT")) return "本地翻译准备超时";
+    return message;
+  }
+
+  async function translatePending() {
     if (!settings.enabled || !pendingText || translationInFlight) return;
     const text = pendingText;
     pendingText = "";
@@ -540,37 +740,21 @@
     lastRequestAt = Date.now();
     setStatus("翻译中…", "busy");
 
-    chrome.runtime.sendMessage(
-      {
-        type: "translate",
-        payload: {
-          text,
-          sourceLang: settings.sourceLang,
-          targetLang: settings.targetLang,
-          translationStyle: settings.translationStyle,
-          glossary: settings.glossary,
-          meetingContext: settings.meetingContext,
-          context: recentPairs.slice(-4),
-        },
-      },
-      (response) => {
-        translationInFlight = false;
-        if (chrome.runtime.lastError) {
-          setStatus(`翻译失败：${chrome.runtime.lastError.message}`, "error");
-        } else if (response?.ok) {
-          lastTranslation = response.translation;
-          recentPairs = [...recentPairs.slice(-4), { source: text, target: lastTranslation }];
-          renderTranslation(lastTranslation);
-          setStatus(response.cached ? "已连接（缓存）" : "已连接", "ok");
-          maybeSpeak(lastTranslation);
-        } else {
-          setStatus(`翻译失败：${response?.error || "未知错误"}`, "error");
-        }
-        if (pendingText && pendingText !== text && settings.enabled) {
-          scheduleTranslation(pendingText);
-        }
-      },
-    );
+    try {
+      const result = await translateWithEngine(text);
+      lastTranslation = result.translation;
+      recentPairs = [...recentPairs.slice(-4), { source: text, target: lastTranslation }];
+      renderTranslation(lastTranslation);
+      setStatus(result.engine === "local" ? "本地翻译" : "AI 翻译", "ok");
+      maybeSpeak(lastTranslation);
+    } catch (error) {
+      setStatus(`翻译失败：${friendlyTranslationError(error)}`, "error");
+    } finally {
+      translationInFlight = false;
+      if (pendingText && pendingText !== text && settings.enabled) {
+        scheduleTranslation(pendingText);
+      }
+    }
   }
 
   function maybeSpeak(text) {
@@ -782,6 +966,8 @@
       title: document.title,
       topFrame: window.top === window,
       readyState: document.readyState,
+      translatorApi: typeof globalThis.Translator,
+      languageDetectorApi: typeof globalThis.LanguageDetector,
       captionSelector: settings.captionSelector || "",
       connected: Boolean(captionElement && captionElement.isConnected),
       lastRawCaption,
@@ -795,6 +981,43 @@
       },
       candidates,
     };
+  }
+
+  async function backgroundLocalStatus() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: "localStatus", payload: { sourceLang: settings.sourceLang, targetLang: settings.targetLang } },
+        (response) => resolve(response || { ok: true, available: false, reason: "no_response" }),
+      );
+    });
+  }
+
+  async function checkLocalStatus() {
+    const API = localTranslatorApi();
+    if (!API) return backgroundLocalStatus();
+    const source = settings.sourceLang === "auto" ? "en" : normalizeLocalLanguage(settings.sourceLang);
+    const target = normalizeLocalLanguage(settings.targetLang) || "zh";
+    try {
+      let availability = "available";
+      if (typeof API.availability === "function") {
+        availability = await API.availability({ sourceLanguage: source, targetLanguage: target });
+      }
+      const ownStatus = {
+        ok: true,
+        available: availability !== "unavailable",
+        availability,
+        source,
+        target,
+        sourceAuto: settings.sourceLang === "auto",
+      };
+      if (ownStatus.available) return ownStatus;
+      const remoteStatus = await backgroundLocalStatus();
+      return remoteStatus.available ? remoteStatus : ownStatus;
+    } catch (error) {
+      const ownStatus = { ok: true, available: false, reason: String(error?.message || error), sourceAuto: settings.sourceLang === "auto" };
+      const remoteStatus = await backgroundLocalStatus();
+      return remoteStatus.available ? remoteStatus : ownStatus;
+    }
   }
 
   function isFromChildFrame(event) {
@@ -875,6 +1098,16 @@
         ownDiagnostics.remoteDiagnostics = children;
         sendResponse(ownDiagnostics);
       });
+      return true;
+    }
+    if (message.type === "localStatus") {
+      checkLocalStatus().then(sendResponse);
+      return true;
+    }
+    if (message.type === "testTranslate") {
+      translateWithEngine("Thanks for joining today's meeting. Let's review the roadmap.")
+        .then((result) => sendResponse({ ok: true, ...result }))
+        .catch((error) => sendResponse({ ok: false, error: friendlyTranslationError(error) }));
       return true;
     }
     if (message.type === "setEnabled") {

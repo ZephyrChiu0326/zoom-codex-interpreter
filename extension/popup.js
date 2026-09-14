@@ -2,6 +2,7 @@ const DEFAULTS = {
   enabled: true,
   sourceLang: "auto",
   targetLang: "zh-CN",
+  translationEngine: "auto",
   translationStyle: "natural",
   showOriginal: true,
   speakTranslation: false,
@@ -33,6 +34,7 @@ const LANGUAGES = [
 const elements = {
   serverDot: document.querySelector("#server-dot"),
   notice: document.querySelector("#notice"),
+  engineStatus: document.querySelector("#engine-status"),
   toggle: document.querySelector("#toggle"),
   pick: document.querySelector("#pick"),
   diagnose: document.querySelector("#diagnose"),
@@ -40,6 +42,7 @@ const elements = {
   test: document.querySelector("#test"),
   sourceLang: document.querySelector("#source-lang"),
   targetLang: document.querySelector("#target-lang"),
+  translationEngine: document.querySelector("#translation-engine"),
   translationStyle: document.querySelector("#translation-style"),
   fontSize: document.querySelector("#font-size"),
   fontSizeValue: document.querySelector("#font-size-value"),
@@ -131,6 +134,7 @@ async function refreshState() {
 
   renderSettings();
   await checkHealth();
+  await refreshEngineStatus();
 }
 
 function renderSettings() {
@@ -138,6 +142,7 @@ function renderSettings() {
   elements.toggle.classList.toggle("paused", !settings.enabled);
   elements.sourceLang.value = settings.sourceLang;
   elements.targetLang.value = settings.targetLang;
+  elements.translationEngine.value = settings.translationEngine || "auto";
   elements.translationStyle.value = settings.translationStyle || "natural";
   elements.fontSize.value = String(settings.fontSize || 22);
   elements.fontSizeValue.textContent = String(settings.fontSize || 22);
@@ -174,23 +179,36 @@ async function diagnoseCaptions() {
   elements.diagnosticResult.textContent = JSON.stringify(response, null, 2);
 }
 
+async function refreshEngineStatus() {
+  if (!isZoomPage) {
+    elements.engineStatus.className = "engine-status";
+    elements.engineStatus.textContent = "打开 Zoom 页面后可检测本地翻译能力。";
+    return;
+  }
+  const response = await sendToContent({ type: "localStatus" });
+  if (response?.available) {
+    elements.engineStatus.className = "engine-status ok";
+    elements.engineStatus.textContent = response.availability === "downloadable"
+      ? "本地翻译：可用（首次使用会下载语言包）"
+      : "本地翻译：可用";
+  } else {
+    elements.engineStatus.className = "engine-status error";
+    elements.engineStatus.textContent = "本地翻译：不可用，将使用 AI 模式";
+  }
+}
+
 async function testTranslation() {
+  if (!isZoomPage) {
+    elements.testResult.className = "result error";
+    elements.testResult.textContent = "请先在当前窗口打开 Zoom 网页版。";
+    return;
+  }
   elements.testResult.className = "result";
-  elements.testResult.textContent = "正在调用本地 Codex 模型…";
-  const response = await chrome.runtime.sendMessage({
-    type: "translate",
-    payload: {
-      text: "Thanks for joining today's meeting. Let's review the roadmap.",
-      sourceLang: "en",
-      targetLang: settings.targetLang || "zh-CN",
-      translationStyle: settings.translationStyle || "natural",
-      glossary: settings.glossary || "",
-      meetingContext: settings.meetingContext || "",
-      context: [],
-    },
-  });
+  elements.testResult.textContent = "正在测试当前翻译引擎…";
+  const response = await sendToContent({ type: "testTranslate" });
   if (response?.ok) {
-    elements.testResult.textContent = response.translation;
+    const engine = response.engine === "local" ? "本地翻译" : "AI 翻译";
+    elements.testResult.textContent = `[${engine}] ${response.translation}`;
   } else {
     elements.testResult.className = "result error";
     elements.testResult.textContent = response?.error || "测试失败。";
@@ -226,6 +244,10 @@ elements.resetSelector.addEventListener("click", async () => {
 elements.health.addEventListener("click", checkHealth);
 elements.sourceLang.addEventListener("change", () => saveSettings({ sourceLang: elements.sourceLang.value }));
 elements.targetLang.addEventListener("change", () => saveSettings({ targetLang: elements.targetLang.value }));
+elements.translationEngine.addEventListener("change", async () => {
+  await saveSettings({ translationEngine: elements.translationEngine.value });
+  await refreshEngineStatus();
+});
 elements.translationStyle.addEventListener("change", () => saveSettings({ translationStyle: elements.translationStyle.value }));
 elements.fontSize.addEventListener("input", () => {
   elements.fontSizeValue.textContent = elements.fontSize.value;

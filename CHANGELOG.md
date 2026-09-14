@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.7
+
+- 新增本地翻译 / AI 翻译双引擎
+- 默认自动模式：本地翻译优先，不可用时自动回退到 AI
+- 支持 Chrome 内置 Translator API
+- 本地翻译模式不需要 Codex、API Key 或 server.py
+- 更新 Chrome / Edge 双版本发布包
+
 ## v1.0.6
 
 - 新增 Microsoft Edge 兼容扩展包

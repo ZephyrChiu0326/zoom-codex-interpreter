@@ -1,12 +1,14 @@
 # Zoom Codex Interpreter
 
-Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读取 Zoom 的实时字幕，调用本机 Codex 模型代理翻译，并在 Zoom 页面显示紧凑字幕条。
+Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读取 Zoom 的实时字幕，可选择浏览器本地翻译或 Codex AI 翻译，并在 Zoom 页面显示紧凑字幕条。
 
 ## 功能
 
 - Zoom 网页版实时字幕监听
 - 支持 Zoom 会议 iframe
-- 本机 Codex 模型代理翻译
+- 本地翻译 / AI 翻译双引擎
+- 本机 Codex 模型代理翻译（AI 模式）
+- Chrome 内置 Translator API（本地模式）
 - 自然口语 / 简洁短句 / 逐字准确三种字幕风格
 - 会议背景与术语表
 - 紧凑字幕条，最多两行译文，点击穿透
@@ -15,6 +17,22 @@ Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读�
 - 字幕区域手动选择与自动检测
 
 ## 工作原理
+
+自动模式：
+
+```text
+Zoom 网页实时字幕
+        ↓
+Chrome 扩展读取字幕文本
+        ↓
+优先使用浏览器本地翻译
+        ↓
+本地翻译不可用时回退到 AI 翻译
+        ↓
+译文显示在 Zoom 页面底部字幕条
+```
+
+AI 模式：
 
 ```text
 Zoom 网页实时字幕
@@ -28,7 +46,7 @@ Codex / cc-switch 模型代理（默认 127.0.0.1:15721/v1）
 译文显示在 Zoom 页面底部字幕条
 ```
 
-扩展不依赖 ChatGPT 登录版 Chrome 插件，可以使用当前 Codex 的 API Key + 本地模型代理。
+本地模式不需要 Codex、API Key 或 `server.py`。
 
 ## 目录结构
 
@@ -54,14 +72,20 @@ zoom-codex-interpreter/
 
 ## 使用前提
 
+本地翻译模式：
+
+- Chrome 138+（推荐，具体可用性取决于浏览器）
+- 不需要 Codex、API Key 或 `server.py`
+
+AI 翻译模式：
+
 - Codex / ChatGPT 桌面程序正在运行
 - 本机 Codex 模型代理可访问，默认 `http://127.0.0.1:15721/v1`
 - `~/.codex/config.toml` 中有 `model` 和 `model_providers.custom.base_url`
 - `~/.codex/auth.json` 中有 `OPENAI_API_KEY`，或环境变量中有 `OPENAI_API_KEY`
 - Python 3.11+
-- Chrome 116+
 
-## 启动本地翻译服务
+## 启动 AI 翻译服务（仅 AI 模式需要）
 
 ```bash
 cd /path/to/zoom-codex-interpreter
@@ -102,6 +126,22 @@ Zoom Codex Interpreter local service
 
 Edge 与 Chrome 使用同一套 Chromium 扩展代码。发布包会分别生成 Chrome 版和 Edge 版。
 
+## 翻译引擎设置
+
+在扩展弹窗中选择：
+
+```text
+自动（本地优先，AI 兜底）
+本地翻译（无需大模型）
+Codex AI（质量优先）
+```
+
+- 自动：优先使用浏览器本地翻译，准备超时或不可用时自动使用 AI。
+- 本地：完全使用浏览器本地翻译，不需要 `server.py`，字幕不会离开浏览器。
+- AI：使用 Codex 大模型，翻译质量、术语一致性和上下文更好，需要本机 `server.py`。
+
+Edge 是否支持本地翻译取决于 Edge 版本和系统语言包。如果 Edge 不支持，自动模式会自动回退到 AI 模式。
+
 ## 在 Zoom 中使用
 
 1. 打开 Zoom 网页版会议
@@ -129,13 +169,13 @@ Edge 与 Chrome 使用同一套 Chromium 扩展代码。发布包会分别生成
 Chrome 用户：
 
 ```text
-dist/ZoomCodexInterpreter-chrome-v1.0.6.zip
+dist/ZoomCodexInterpreter-chrome-v1.0.7.zip
 ```
 
 Edge 用户：
 
 ```text
-dist/ZoomCodexInterpreter-edge-v1.0.6.zip
+dist/ZoomCodexInterpreter-edge-v1.0.7.zip
 ```
 
 对方解压后：
@@ -159,7 +199,7 @@ Edge：
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.6.zip
+dist/ZoomCodexInterpreter-full-v1.0.7.zip
 ```
 
 ## 共享更新进度
@@ -176,7 +216,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.6`
+- 每次版本更新使用一个 Git 标签，例如 `v1.0.7`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -190,13 +230,13 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.6.bundle
+dist/ZoomCodexInterpreter-v1.0.7.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.6.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v1.0.7.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。
@@ -218,7 +258,8 @@ git clone ZoomCodexInterpreter-v1.0.6.bundle zoom-codex-interpreter
 
 ## 隐私说明
 
-Zoom 字幕文本会发送到本机 `127.0.0.1:8765` 翻译服务，再由你配置的 Codex 本地代理调用模型。请根据你的 `cc-switch`/Codex 代理后端判断数据是否会离开本机；扩展本身不会把字幕发送到其他第三方服务器。
+- 本地翻译模式：字幕文本在浏览器本地翻译，不会发送到本机服务或外部模型。
+- AI 翻译模式：字幕文本会发送到本机 `127.0.0.1:8765` 翻译服务，再由你配置的 Codex 本地代理调用模型。请根据你的 `cc-switch`/Codex 代理后端判断数据是否会离开本机。
 
 ## 常见问题
 
