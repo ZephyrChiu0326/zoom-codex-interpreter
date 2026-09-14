@@ -15,6 +15,8 @@ Chrome / Microsoft Edge 兼容的 Zoom 网页版实时字幕翻译工具：读�
 - Chrome 内置 Translator API（本地模式）
 - 自然口语 / 简洁短句 / 逐字准确三种字幕风格
 - 会议背景与术语表
+- 与 Zoom 原生字幕重叠显示
+- 自动隐藏原生字幕，只显示插件中的原文和译文
 - 紧凑字幕条，最多两行译文，点击穿透
 - 可调字幕字号、宽度、背景不透明度
 - 可选朗读译文
@@ -73,6 +75,26 @@ zoom-codex-interpreter/
 ├── LICENSE                 MIT License
 └── README.md
 ```
+
+## 重叠字幕模式（v2.0.0 新增）
+
+默认布局是“重叠 Zoom 字幕”：
+
+1. 扩展定位 Zoom 原生字幕区域
+2. 插件字幕精确覆盖该区域
+3. Zoom 原生字幕自动隐藏
+4. 插件中显示原文和译文
+5. 不会额外增加覆盖会议内容的面积
+
+可以在扩展弹窗中切换：
+
+```text
+字幕布局：
+  重叠 Zoom 字幕（推荐）
+  底部浮动
+```
+
+如果自动对齐失败，可以点击“重新加载”或切换到底部浮动模式。
 
 ## 使用前提
 
@@ -278,13 +300,13 @@ AI / 云翻译服务：DeepL / Microsoft / Google / LibreTranslate / 自动选�
 Chrome 用户：
 
 ```text
-dist/ZoomCodexInterpreter-chrome-v1.0.10.zip
+dist/ZoomCodexInterpreter-chrome-v2.0.0.zip
 ```
 
 Edge 用户：
 
 ```text
-dist/ZoomCodexInterpreter-edge-v1.0.10.zip
+dist/ZoomCodexInterpreter-edge-v2.0.0.zip
 ```
 
 对方解压后：
@@ -308,7 +330,7 @@ Edge：
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.10.zip
+dist/ZoomCodexInterpreter-full-v2.0.0.zip
 ```
 
 ## 共享更新进度
@@ -325,7 +347,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.10`
+- 每次版本更新使用一个 Git 标签，例如 `v2.0.0`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -339,13 +361,13 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.10.bundle
+dist/ZoomCodexInterpreter-v2.0.0.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.10.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v2.0.0.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。

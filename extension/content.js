@@ -17,6 +17,7 @@
     glossary: "",
     meetingContext: "",
     captionSelector: "",
+    overlayMode: "overlap",
     compactMode: true,
     overlayWidth: 680,
     overlayOpacity: 0.72,
@@ -62,6 +63,9 @@
   let remoteDiagnostics = [];
   const localTranslatorPromises = new Map();
   const localTranslationCache = new Map();
+  const hiddenCaptionElements = new Map();
+  let currentCaptionRect = null;
+  let currentCaptionSource = null;
   const captionCandidateSelectors = [
     '[aria-live="polite"]',
     '[aria-live="assertive"]',
@@ -129,6 +133,135 @@
     if (rect.width < 40 || rect.height < 12) return false;
     const style = window.getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) > 0.05;
+  }
+
+  function isOverlapMode() {
+    return settings.overlayMode === "overlap";
+  }
+
+  function rectToObject(rect, fontSize = 16) {
+    return {
+      left: Number(rect.left || 0),
+      top: Number(rect.top || 0),
+      width: Number(rect.width || 0),
+      height: Number(rect.height || 0),
+      fontSize: Number(fontSize || 16),
+    };
+  }
+
+  function hideCaptionElement(element, hidden) {
+    if (!element || element.nodeType !== 1) return;
+    if (hidden) {
+      if (!hiddenCaptionElements.has(element)) {
+        hiddenCaptionElements.set(element, element.style.opacity || "");
+      }
+      element.style.setProperty("opacity", "0", "important");
+      element.style.setProperty("pointer-events", "none", "important");
+      return;
+    }
+    const originalOpacity = hiddenCaptionElements.get(element);
+    if (originalOpacity !== undefined) {
+      if (originalOpacity) element.style.opacity = originalOpacity;
+      else element.style.removeProperty("opacity");
+      element.style.removeProperty("pointer-events");
+      hiddenCaptionElements.delete(element);
+    } else {
+      element.style.removeProperty("opacity");
+      element.style.removeProperty("pointer-events");
+    }
+  }
+
+  function findIframeBySource(source) {
+    return Array.from(document.querySelectorAll("iframe")).find((frame) => frame.contentWindow === source) || null;
+  }
+
+  function computeRemoteRect(source, data) {
+    const iframe = findIframeBySource(source);
+    if (!iframe || !data?.rect) return null;
+    const iframeRect = iframe.getBoundingClientRect();
+    return {
+      left: iframeRect.left + Number(data.rect.left || 0),
+      top: iframeRect.top + Number(data.rect.top || 0),
+      width: Number(data.rect.width || 0),
+      height: Number(data.rect.height || 0),
+      fontSize: Number(data.fontSize || 16),
+    };
+  }
+
+  function applyOverlayRect(rect) {
+    if (!overlayHost || !overlayElements) return;
+    if (isOverlapMode() && (!rect || rect.width <= 0 || rect.height <= 0)) {
+      overlayHost.style.opacity = "0";
+      return;
+    }
+    if (!isOverlapMode()) {
+      overlayHost.style.opacity = "1";
+      overlayHost.style.left = "50%";
+      overlayHost.style.top = "auto";
+      overlayHost.style.bottom = "18px";
+      overlayHost.style.width = "min(var(--overlay-width, 680px), 94vw)";
+      overlayHost.style.height = "auto";
+      overlayHost.style.transform = "translateX(-50%)";
+      shadow.host.style.setProperty("--translation-size", `${Number(settings.fontSize) || 22}px`);
+      return;
+    }
+
+    overlayHost.style.opacity = "1";
+    const width = Math.max(120, rect.width);
+    const height = Math.max(24, rect.height);
+    const fontSize = Math.max(12, Math.min(Number(settings.fontSize) || 20, height / 2.2, width / 18));
+    overlayHost.style.left = `${Math.max(0, rect.left)}px`;
+    overlayHost.style.top = `${Math.max(0, rect.top)}px`;
+    overlayHost.style.bottom = "auto";
+    overlayHost.style.width = `${width}px`;
+    overlayHost.style.height = `${height}px`;
+    overlayHost.style.transform = "none";
+    shadow.host.style.setProperty("--translation-size", `${Math.round(fontSize)}px`);
+  }
+
+  function applyOverlayMode() {
+    if (!overlayElements || !overlayHost) return;
+    const overlap = isOverlapMode();
+    overlayElements.wrapper.classList.toggle("overlap", overlap);
+    overlayHost.style.pointerEvents = overlap ? "none" : (settings.compactMode ? "none" : "auto");
+
+    if (!settings.enabled) {
+      hideCaptionElement(captionElement, false);
+      if (currentCaptionSource) {
+        currentCaptionSource.postMessage({ source: "zoom-codex-interpreter", type: "overlap-active", active: false }, "*");
+      }
+      return;
+    }
+
+    if (overlap) {
+      applyOverlayRect(currentCaptionRect);
+      if (IS_TOP && captionElement) hideCaptionElement(captionElement, true);
+      if (currentCaptionSource) {
+        currentCaptionSource.postMessage({ source: "zoom-codex-interpreter", type: "overlap-active", active: true }, "*");
+      }
+      return;
+    }
+
+    overlayHost.style.pointerEvents = settings.compactMode ? "none" : "auto";
+    applyOverlayRect(null);
+    hideCaptionElement(captionElement, false);
+    if (currentCaptionSource) {
+      currentCaptionSource.postMessage({ source: "zoom-codex-interpreter", type: "overlap-active", active: false }, "*");
+    }
+  }
+
+  function reportCaptionFrame(rect) {
+    if (!captionElement) return;
+    const fontSize = Number.parseFloat(window.getComputedStyle(captionElement).fontSize) || 16;
+    window.top.postMessage(
+      {
+        source: "zoom-codex-interpreter",
+        type: "caption-rect",
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        fontSize,
+      },
+      "*",
+    );
   }
 
   function queryAllDeep(selector, root = document) {
@@ -236,6 +369,51 @@
         text-shadow: 0 1px 3px rgba(0,0,0,.98);
         max-height: 20px;
         font-size: 12px;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 1;
+        overflow: hidden;
+      }
+      .panel.overlap {
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, calc(var(--overlay-opacity, .72) * .35));
+        border: 0;
+        box-shadow: none;
+        border-radius: 6px;
+        backdrop-filter: none;
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+      }
+      .panel.overlap .header,
+      .panel.overlap .controls { display: none; }
+      .panel.overlap .body {
+        width: 100%;
+        max-height: 100%;
+        padding: 2px 8px;
+        overflow: hidden;
+      }
+      .panel.overlap .translation {
+        text-align: center;
+        color: #fff;
+        font-size: min(var(--translation-size, 20px), 22px);
+        line-height: 1.2;
+        font-weight: 700;
+        text-shadow: 0 1px 3px rgba(0,0,0,.98), 0 0 8px rgba(0,0,0,.94);
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      .panel.overlap .original {
+        text-align: center;
+        color: rgba(255,255,255,.82);
+        font-size: min(calc(var(--translation-size, 20px) * .72), 14px);
+        line-height: 1.15;
+        margin-top: 2px;
+        max-height: 1.2em;
+        text-shadow: 0 1px 3px rgba(0,0,0,.98);
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 1;
@@ -393,7 +571,6 @@
   function applySettingsToOverlay() {
     if (!overlayElements || !overlayHost) return;
     overlayHost.style.display = settings.enabled ? "block" : "none";
-    overlayHost.style.pointerEvents = settings.compactMode ? "none" : "auto";
     overlayElements.wrapper.classList.toggle("compact", Boolean(settings.compactMode));
     shadow.host.style.setProperty("--overlay-width", `${Number(settings.overlayWidth) || 680}px`);
     shadow.host.style.setProperty("--overlay-opacity", String(Number(settings.overlayOpacity) || 0.72));
@@ -404,8 +581,8 @@
     overlayElements.showOriginal.checked = Boolean(settings.showOriginal);
     overlayElements.speak.classList.toggle("active", Boolean(settings.speakTranslation));
     overlayElements.glossary.value = settings.glossary || "";
-    shadow.host.style.setProperty("--translation-size", `${Number(settings.fontSize) || 22}px`);
     overlayElements.original.classList.toggle("hidden", !settings.showOriginal);
+    applyOverlayMode();
   }
 
   function setStatus(text, state = "") {
@@ -487,6 +664,7 @@
 
   function attachCaptionElement(element) {
     if (!element || element === captionElement) return;
+    if (captionElement && captionElement !== element) hideCaptionElement(captionElement, false);
     captionObserver?.disconnect();
     if (captionPollTimer) window.clearInterval(captionPollTimer);
     captionElement = element;
@@ -515,6 +693,19 @@
 
   function readCaption() {
     if (!settings.enabled || !captionElement || !captionElement.isConnected) return;
+    const rect = captionElement.getBoundingClientRect();
+    const fontSize = Number.parseFloat(window.getComputedStyle(captionElement).fontSize) || 16;
+    if (IS_TOP) {
+      currentCaptionRect = rectToObject(rect, fontSize);
+      currentCaptionSource = null;
+      if (isOverlapMode()) {
+        applyOverlayRect(currentCaptionRect);
+        hideCaptionElement(captionElement, true);
+      }
+    } else {
+      reportCaptionFrame(rect);
+    }
+
     const text = extractCaptionText(captionElement);
     if (!text || text === lastRawCaption) return;
     lastRawCaption = text;
@@ -522,7 +713,16 @@
       renderOriginal(text);
       scheduleTranslation(text);
     } else {
-      window.top.postMessage({ source: "zoom-codex-interpreter", type: "caption", text }, "*");
+      window.top.postMessage(
+        {
+          source: "zoom-codex-interpreter",
+          type: "caption",
+          text,
+          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          fontSize,
+        },
+        "*",
+      );
     }
   }
 
@@ -1048,6 +1248,20 @@
     if (!data || data.source !== "zoom-codex-interpreter") return;
     if (IS_TOP) {
       if (!isFromChildFrame(event)) return;
+      if ((data.type === "caption" || data.type === "caption-rect") && data.rect) {
+        const rect = computeRemoteRect(event.source, data);
+        if (rect && rect.width > 0 && rect.height > 0) {
+          currentCaptionSource = event.source;
+          currentCaptionRect = rect;
+          remoteCaptionActive = true;
+          if (isOverlapMode()) {
+            applyOverlayRect(rect);
+            event.source.postMessage({ source: "zoom-codex-interpreter", type: "overlap-active", active: true }, "*");
+          } else {
+            event.source.postMessage({ source: "zoom-codex-interpreter", type: "overlap-active", active: false }, "*");
+          }
+        }
+      }
       if (data.type === "caption" && typeof data.text === "string" && data.text.trim()) {
         remoteCaptionActive = true;
         lastRawCaption = data.text.trim();
@@ -1061,6 +1275,9 @@
         remoteDiagnostics.push({ ...data.diagnostics, relayedFrom: "iframe" });
       }
       return;
+    }
+    if (data.type === "overlap-active") {
+      hideCaptionElement(captionElement, Boolean(data.active));
     }
     if (data.type === "request-diagnostics") {
       window.top.postMessage(

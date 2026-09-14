@@ -1,10 +1,10 @@
 {
   "name": "Zoom Codex Interpreter",
-  "version": "1.0.10",
+  "version": "2.0.0",
   "releaseDate": "2026-09-14",
-  "notes": "Google Cloud Translation 设为优先翻译服务，并新增网络代理配置以支持 Google API。",
-  "extensionDownload": "dist/ZoomCodexInterpreter-extension-v1.0.10.zip",
-  "fullDownload": "dist/ZoomCodexInterpreter-full-v1.0.10.zip",
-  "chromeDownload": "dist/ZoomCodexInterpreter-chrome-v1.0.10.zip",
-  "edgeDownload": "dist/ZoomCodexInterpreter-edge-v1.0.10.zip"
+  "notes": "大版本升级：新增与 Zoom 字幕重叠模式，隐藏原始字幕，只显示插件中的原文和翻译。",
+  "extensionDownload": "dist/ZoomCodexInterpreter-extension-v2.0.0.zip",
+  "fullDownload": "dist/ZoomCodexInterpreter-full-v2.0.0.zip",
+  "chromeDownload": "dist/ZoomCodexInterpreter-chrome-v2.0.0.zip",
+  "edgeDownload": "dist/ZoomCodexInterpreter-edge-v2.0.0.zip"
 }

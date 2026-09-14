@@ -10,6 +10,7 @@ const DEFAULTS = {
   glossary: "",
   meetingContext: "",
   captionSelector: "",
+  overlayMode: "overlap",
   compactMode: true,
   overlayWidth: 680,
   overlayOpacity: 0.72,
@@ -52,6 +53,7 @@ const elements = {
   fontSize: document.querySelector("#font-size"),
   fontSizeValue: document.querySelector("#font-size-value"),
   compactMode: document.querySelector("#compact-mode"),
+  overlayMode: document.querySelector("#overlay-mode"),
   overlayWidth: document.querySelector("#overlay-width"),
   overlayWidthValue: document.querySelector("#overlay-width-value"),
   overlayOpacity: document.querySelector("#overlay-opacity"),
@@ -155,6 +157,7 @@ function renderSettings() {
   elements.fontSize.value = String(settings.fontSize || 22);
   elements.fontSizeValue.textContent = String(settings.fontSize || 22);
   elements.compactMode.checked = settings.compactMode !== false;
+  elements.overlayMode.value = settings.overlayMode || "overlap";
   elements.overlayWidth.value = String(settings.overlayWidth || 680);
   elements.overlayWidthValue.textContent = String(settings.overlayWidth || 680);
   elements.overlayOpacity.value = String(Math.round((Number(settings.overlayOpacity) || 0.72) * 100));
@@ -361,6 +364,7 @@ elements.fontSize.addEventListener("input", () => {
   elements.fontSize._saveTimer = window.setTimeout(() => saveSettings({ fontSize: Number(elements.fontSize.value) }), 150);
 });
 elements.compactMode.addEventListener("change", () => saveSettings({ compactMode: elements.compactMode.checked }));
+elements.overlayMode.addEventListener("change", () => saveSettings({ overlayMode: elements.overlayMode.value }));
 elements.overlayWidth.addEventListener("input", () => {
   elements.overlayWidthValue.textContent = elements.overlayWidth.value;
   window.clearTimeout(elements.overlayWidth._saveTimer);
