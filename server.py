@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import threading
 import time
 import tomllib
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import OrderedDict
 from http import HTTPStatus
@@ -73,6 +75,124 @@ class TranslationCache:
                 self._items.popitem(last=False)
 
 
+PROVIDER_NAMES = {
+    "auto": "自动选择",
+    "codex": "Codex AI",
+    "deepl": "DeepL",
+    "microsoft": "Microsoft Translator",
+    "google": "Google Cloud Translation",
+    "libretranslate": "LibreTranslate",
+}
+
+PROVIDER_HINTS = {
+    "deepl": "需要 DeepL API Key",
+    "microsoft": "需要 Azure Translator Key 和区域",
+    "google": "需要 Google Cloud Translation API Key",
+    "libretranslate": "需要本地或远程 LibreTranslate 地址",
+}
+
+DEEPL_LANGUAGE_MAP = {
+    "auto": None,
+    "zh-CN": "ZH",
+    "zh-TW": "ZH-HANT",
+    "zh-HK": "ZH-HANT",
+    "en": "EN",
+    "ja": "JA",
+    "ko": "KO",
+    "de": "DE",
+    "fr": "FR",
+    "es": "ES",
+    "pt": "PT-BR",
+    "it": "IT",
+    "ru": "RU",
+    "ar": "AR",
+}
+
+MICROSOFT_LANGUAGE_MAP = {
+    "auto": None,
+    "zh-CN": "zh-Hans",
+    "zh-TW": "zh-Hant",
+    "zh-HK": "zh-Hant",
+}
+
+LIBRETRANSLATE_LANGUAGE_MAP = {
+    "auto": None,
+    "zh-CN": "zh",
+    "zh-TW": "zt",
+    "zh-HK": "zt",
+}
+
+
+def default_provider_config() -> dict[str, Any]:
+    return {
+        "defaultProvider": "auto",
+        "fallbackOrder": ["deepl", "microsoft", "google", "libretranslate", "codex"],
+        "providers": {
+            "codex": {},
+            "deepl": {
+                "apiKey": "",
+                "pro": False,
+                "endpoint": "https://api-free.deepl.com/v2/translate",
+            },
+            "microsoft": {
+                "apiKey": "",
+                "region": "eastasia",
+                "endpoint": "https://api.cognitive.microsofttranslator.com",
+            },
+            "google": {
+                "apiKey": "",
+                "endpoint": "https://translation.googleapis.com/language/translate/v2",
+            },
+            "libretranslate": {
+                "url": "",
+                "apiKey": "",
+            },
+        },
+    }
+
+
+def load_provider_config(path: Path) -> dict[str, Any]:
+    config = default_provider_config()
+    try:
+        user_config = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return config
+    except Exception as exc:
+        print(f"[warn] 读取翻译服务配置 {path} 失败：{exc}", file=sys.stderr)
+        return config
+
+    if isinstance(user_config.get("defaultProvider"), str):
+        config["defaultProvider"] = user_config["defaultProvider"]
+    if isinstance(user_config.get("fallbackOrder"), list):
+        config["fallbackOrder"] = [str(item) for item in user_config["fallbackOrder"]]
+    providers = user_config.get("providers")
+    if isinstance(providers, dict):
+        for name, values in providers.items():
+            if isinstance(values, dict):
+                config["providers"].setdefault(str(name), {}).update(values)
+    return config
+
+
+def provider_configured(name: str, config: dict[str, Any], codex_api_key: str | None) -> bool:
+    if name == "codex":
+        return bool(codex_api_key)
+    if name == "libretranslate":
+        return bool(config.get("url"))
+    if name == "microsoft":
+        return bool(config.get("apiKey") and config.get("region"))
+    return bool(config.get("apiKey"))
+
+
+def map_language(value: str, mapping: dict[str, str | None], fallback: str | None = None) -> str | None:
+    value = (value or "").strip()
+    if value in mapping:
+        return mapping[value]
+    base = value.split("-")[0]
+    if base in mapping:
+        return mapping[base]
+    return fallback if fallback is not None else (value or None)
+
+
 class TranslationRuntime:
     def __init__(
         self,
@@ -81,12 +201,14 @@ class TranslationRuntime:
         model: str,
         api_key: str | None,
         timeout: float,
+        provider_config: dict[str, Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
         self.cache = TranslationCache()
+        self.provider_config = provider_config or default_provider_config()
 
     @property
     def responses_url(self) -> str:
@@ -94,13 +216,44 @@ class TranslationRuntime:
             return self.base_url
         return f"{self.base_url}/responses"
 
+    def provider_settings(self, name: str) -> dict[str, Any]:
+        providers = self.provider_config.get("providers") or {}
+        values = providers.get(name) or {}
+        return values if isinstance(values, dict) else {}
+
+    def providers(self) -> dict[str, Any]:
+        provider_ids = ["auto", "codex", "deepl", "microsoft", "google", "libretranslate"]
+        providers = []
+        for provider_id in provider_ids:
+            configured = True if provider_id == "auto" else provider_configured(
+                provider_id,
+                self.provider_settings(provider_id),
+                self.api_key,
+            )
+            providers.append(
+                {
+                    "id": provider_id,
+                    "name": PROVIDER_NAMES.get(provider_id, provider_id),
+                    "configured": configured,
+                    "hint": PROVIDER_HINTS.get(provider_id, ""),
+                }
+            )
+        return {
+            "ok": True,
+            "defaultProvider": self.provider_config.get("defaultProvider") or "auto",
+            "fallbackOrder": self.provider_config.get("fallbackOrder") or [],
+            "providers": providers,
+        }
+
     def health(self) -> dict[str, Any]:
+        configured = [item["id"] for item in self.providers()["providers"] if item["configured"]]
         return {
             "ok": True,
             "service": "zoom-codex-interpreter",
             "model": self.model,
             "base_url": self.base_url,
             "api_key_loaded": bool(self.api_key),
+            "configured_providers": configured,
         }
 
     def translate(
@@ -113,20 +266,14 @@ class TranslationRuntime:
         meeting_context: str = "",
         style: str = "natural",
         context: list[dict[str, str]] | None = None,
+        provider: str = "auto",
     ) -> str:
         text = normalize_caption(text)
         if not text:
             raise TranslationError("没有可翻译的字幕文本。")
         if len(text) > MAX_TEXT_CHARS:
             raise TranslationError(f"字幕片段过长（{len(text)} 字符），最多支持 {MAX_TEXT_CHARS} 字符。")
-        if not self.api_key:
-            raise TranslationError(
-                "没有找到 Codex API Key。请确认 ~/.codex/auth.json 存在，"
-                "或设置 OPENAI_API_KEY 环境变量。"
-            )
 
-        source_name = _LANGUAGE_NAMES.get(source_lang, source_lang or "the source language")
-        target_name = _LANGUAGE_NAMES.get(target_lang, target_lang or "Simplified Chinese")
         context = context or []
         glossary = (glossary or "").strip()[:2000]
         meeting_context = (meeting_context or "").strip()[:1200]
@@ -134,9 +281,95 @@ class TranslationRuntime:
         if style not in {"natural", "concise", "literal"}:
             style = "natural"
 
-        cache_key = sha256_text(
+        requested = (provider or self.provider_config.get("defaultProvider") or "auto").strip().lower()
+        if requested in {"auto", "server"}:
+            candidates = [str(item).lower() for item in (self.provider_config.get("fallbackOrder") or [])]
+            if "codex" not in candidates:
+                candidates.append("codex")
+        else:
+            candidates = [requested]
+        if not candidates:
+            candidates = ["codex"]
+
+        errors: list[str] = []
+        for candidate in candidates:
+            if candidate in {"local", "browser"}:
+                errors.append("本地浏览器翻译由扩展处理")
+                continue
+            if not provider_configured(candidate, self.provider_settings(candidate), self.api_key):
+                errors.append(f"{PROVIDER_NAMES.get(candidate, candidate)} 未配置")
+                continue
+            cache_key = self._cache_key(
+                provider=candidate,
+                text=text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                glossary=glossary,
+                meeting_context=meeting_context,
+                style=style,
+                context=context,
+            )
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                return cached
+            try:
+                translation = self._translate_with_provider(
+                    candidate,
+                    text,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    glossary=glossary,
+                    meeting_context=meeting_context,
+                    style=style,
+                    context=context,
+                )
+                translation = clean_translation(translation)
+                if not translation:
+                    raise TranslationError("翻译服务没有返回可用文本")
+                self.cache.put(cache_key, translation)
+                return translation
+            except TranslationError as exc:
+                errors.append(f"{PROVIDER_NAMES.get(candidate, candidate)}：{exc}")
+
+        raise TranslationError("所有翻译服务都失败：" + "；".join(errors or ["没有可用服务"]))
+
+    def _translate_with_provider(
+        self,
+        provider: str,
+        text: str,
+        *,
+        source_lang: str,
+        target_lang: str,
+        glossary: str,
+        meeting_context: str,
+        style: str,
+        context: list[dict[str, str]],
+    ) -> str:
+        if provider == "codex":
+            return self._translate_codex(
+                text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                glossary=glossary,
+                meeting_context=meeting_context,
+                style=style,
+                context=context,
+            )
+        if provider == "deepl":
+            return self._translate_deepl(text, source_lang=source_lang, target_lang=target_lang)
+        if provider == "microsoft":
+            return self._translate_microsoft(text, source_lang=source_lang, target_lang=target_lang)
+        if provider == "google":
+            return self._translate_google(text, source_lang=source_lang, target_lang=target_lang)
+        if provider == "libretranslate":
+            return self._translate_libretranslate(text, source_lang=source_lang, target_lang=target_lang)
+        raise TranslationError(f"不支持的翻译服务：{provider}")
+
+    def _cache_key(self, *, provider: str, text: str, source_lang: str, target_lang: str, glossary: str, meeting_context: str, style: str, context: list[dict[str, str]]) -> str:
+        return sha256_text(
             "\x1f".join(
                 [
+                    provider,
                     self.model,
                     source_lang,
                     target_lang,
@@ -148,10 +381,25 @@ class TranslationRuntime:
                 ]
             )
         )
-        cached = self.cache.get(cache_key)
-        if cached is not None:
-            return cached
 
+    def _translate_codex(
+        self,
+        text: str,
+        *,
+        source_lang: str,
+        target_lang: str,
+        glossary: str,
+        meeting_context: str,
+        style: str,
+        context: list[dict[str, str]],
+    ) -> str:
+        if not self.api_key:
+            raise TranslationError(
+                "没有找到 Codex API Key。请确认 ~/.codex/auth.json 存在，"
+                "或设置 OPENAI_API_KEY 环境变量。"
+            )
+        source_name = _LANGUAGE_NAMES.get(source_lang, source_lang or "the source language")
+        target_name = _LANGUAGE_NAMES.get(target_lang, target_lang or "Simplified Chinese")
         system_prompt = build_system_prompt(
             source_name=source_name,
             target_name=target_name,
@@ -163,54 +411,131 @@ class TranslationRuntime:
         payload = {
             "model": self.model,
             "input": [
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
-                },
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": text}],
-                },
+                {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                {"role": "user", "content": [{"type": "input_text", "text": text}]},
             ],
             "reasoning": {"effort": "none"},
             "temperature": 0.2,
             "max_output_tokens": 360,
             "stream": False,
         }
-        data = self._post_json(self.responses_url, payload)
-        translation = extract_output_text(data)
-        translation = clean_translation(translation)
-        if not translation:
-            raise TranslationError("模型没有返回可用的翻译文本。")
-        self.cache.put(cache_key, translation)
-        return translation
+        data = self._http_json("POST", self.responses_url, payload, headers={"Authorization": f"Bearer {self.api_key}"}, provider_name="Codex")
+        return extract_output_text(data)
 
-    def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+    def _translate_deepl(self, text: str, *, source_lang: str, target_lang: str) -> str:
+        settings = self.provider_settings("deepl")
+        api_key = str(settings.get("apiKey") or "")
+        endpoint = str(settings.get("endpoint") or "https://api-free.deepl.com/v2/translate")
+        target = map_language(target_lang, DEEPL_LANGUAGE_MAP)
+        source = map_language(source_lang, DEEPL_LANGUAGE_MAP)
+        if not target:
+            raise TranslationError("DeepL 不支持该目标语言")
+        payload: dict[str, Any] = {
+            "text": [text],
+            "target_lang": target,
+            "preserve_formatting": True,
         }
-        request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        if source:
+            payload["source_lang"] = source
+        data = self._http_json(
+            "POST",
+            endpoint,
+            payload,
+            headers={"Authorization": f"DeepL-Auth-Key {api_key}"},
+            provider_name="DeepL",
+        )
+        return str(data["translations"][0]["text"])
+
+    def _translate_microsoft(self, text: str, *, source_lang: str, target_lang: str) -> str:
+        settings = self.provider_settings("microsoft")
+        api_key = str(settings.get("apiKey") or "")
+        region = str(settings.get("region") or "")
+        endpoint = str(settings.get("endpoint") or "https://api.cognitive.microsofttranslator.com").rstrip("/")
+        target = map_language(target_lang, MICROSOFT_LANGUAGE_MAP)
+        source = map_language(source_lang, MICROSOFT_LANGUAGE_MAP)
+        if not target:
+            raise TranslationError("Microsoft Translator 不支持该目标语言")
+        params = {"api-version": "3.0", "to": target}
+        if source:
+            params["from"] = source
+        url = f"{endpoint}/translate?{urllib.parse.urlencode(params)}"
+        data = self._http_json(
+            "POST",
+            url,
+            [{"Text": text}],
+            headers={
+                "Ocp-Apim-Subscription-Key": api_key,
+                "Ocp-Apim-Subscription-Region": region,
+            },
+            provider_name="Microsoft Translator",
+        )
+        return str(data[0]["translations"][0]["text"])
+
+    def _translate_google(self, text: str, *, source_lang: str, target_lang: str) -> str:
+        settings = self.provider_settings("google")
+        api_key = str(settings.get("apiKey") or "")
+        endpoint = str(settings.get("endpoint") or "https://translation.googleapis.com/language/translate/v2")
+        params = {"key": api_key}
+        separator = "&" if "?" in endpoint else "?"
+        url = f"{endpoint}{separator}{urllib.parse.urlencode(params)}"
+        payload: dict[str, Any] = {
+            "q": text,
+            "target": target_lang,
+            "format": "text",
+        }
+        if source_lang and source_lang != "auto":
+            payload["source"] = source_lang
+        data = self._http_json("POST", url, payload, provider_name="Google Cloud Translation")
+        return html.unescape(str(data["data"]["translations"][0]["translatedText"]))
+
+    def _translate_libretranslate(self, text: str, *, source_lang: str, target_lang: str) -> str:
+        settings = self.provider_settings("libretranslate")
+        base_url = str(settings.get("url") or "").rstrip("/")
+        api_key = str(settings.get("apiKey") or "")
+        if not base_url:
+            raise TranslationError("LibreTranslate 地址为空")
+        source = map_language(source_lang, LIBRETRANSLATE_LANGUAGE_MAP) or "auto"
+        target = map_language(target_lang, LIBRETRANSLATE_LANGUAGE_MAP)
+        if not target:
+            raise TranslationError("LibreTranslate 不支持该目标语言")
+        payload: dict[str, Any] = {
+            "q": text,
+            "source": source,
+            "target": target,
+            "format": "text",
+        }
+        if api_key:
+            payload["api_key"] = api_key
+        data = self._http_json("POST", f"{base_url}/translate", payload, provider_name="LibreTranslate")
+        return str(data["translatedText"])
+
+    def _http_json(
+        self,
+        method: str,
+        url: str,
+        payload: dict[str, Any] | list[Any] | None = None,
+        headers: dict[str, str] | None = None,
+        provider_name: str = "翻译服务",
+    ) -> Any:
+        body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        request_headers = {"Accept": "application/json", **(headers or {})}
+        if body is not None:
+            request_headers.setdefault("Content-Type", "application/json")
+        request = urllib.request.Request(url, data=body, headers=request_headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:800]
-            raise TranslationError(f"Codex 代理返回 HTTP {exc.code}: {detail}") from exc
+            raise TranslationError(f"{provider_name} 返回 HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
-            raise TranslationError(
-                "无法连接 Codex 模型代理。请确认 Codex/ChatGPT 桌面程序正在运行，"
-                f"且代理地址 {self.base_url} 可访问。"
-            ) from exc
+            raise TranslationError(f"无法连接 {provider_name}：{exc}") from exc
         except TimeoutError as exc:
-            raise TranslationError("Codex 模型代理响应超时。") from exc
+            raise TranslationError(f"{provider_name} 响应超时") from exc
         try:
             return json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise TranslationError(f"Codex 代理返回了非 JSON 响应：{raw[:500]}") from exc
-
+            raise TranslationError(f"{provider_name} 返回了非 JSON 响应：{raw[:500]}") from exc
 
 def build_system_prompt(
     *,
@@ -399,6 +724,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/health"):
             self._send_json(HTTPStatus.OK, runtime.health())
             return
+        if self.path.startswith("/providers"):
+            self._send_json(HTTPStatus.OK, runtime.providers())
+            return
         if self.path.startswith("/config"):
             self._send_json(
                 HTTPStatus.OK,
@@ -408,6 +736,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "base_url": runtime.base_url,
                     "source_lang_default": "auto",
                     "target_lang_default": "zh-CN",
+                    "providers": runtime.providers(),
                 },
             )
             return
@@ -416,7 +745,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             {
                 "ok": True,
                 "name": "Zoom Codex Interpreter local service",
-                "endpoints": ["GET /health", "GET /config", "POST /translate"],
+                "endpoints": ["GET /health", "GET /config", "GET /providers", "POST /translate"],
             },
         )
 
@@ -447,6 +776,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 meeting_context=str(payload.get("meetingContext") or payload.get("meeting_context") or ""),
                 style=str(payload.get("translationStyle") or payload.get("style") or "natural"),
                 context=payload.get("context") if isinstance(payload.get("context"), list) else None,
+                provider=str(payload.get("provider") or payload.get("translationProvider") or "auto"),
             )
             self._send_json(HTTPStatus.OK, {"ok": True, "translation": translation})
         except TranslationError as exc:
@@ -463,6 +793,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--base-url", default=None, help="覆盖 Codex 配置中的模型代理地址")
     parser.add_argument("--timeout", type=float, default=30.0, help="调用模型代理的超时秒数")
     parser.add_argument("--codex-home", default=str(Path.home() / ".codex"), help="Codex 配置目录")
+    parser.add_argument(
+        "--config",
+        default=str(Path.home() / "Library" / "Application Support" / "ZoomCodexInterpreter" / "config.json"),
+        help="翻译服务配置文件；默认 ~/Library/Application Support/ZoomCodexInterpreter/config.json",
+    )
     return parser.parse_args(argv)
 
 
@@ -474,11 +809,14 @@ def main(argv: list[str] | None = None) -> int:
         model_override=args.model,
         base_url_override=args.base_url,
     )
+    config_path = Path(args.config).expanduser()
+    provider_config = load_provider_config(config_path)
     runtime = TranslationRuntime(
         base_url=base_url,
         model=model,
         api_key=api_key,
         timeout=args.timeout,
+        provider_config=provider_config,
     )
     httpd = ThreadingHTTPServer((args.host, args.port), RequestHandler)
     httpd.runtime = runtime  # type: ignore[attr-defined]
@@ -487,6 +825,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Codex proxy: {runtime.base_url}")
     print(f"  Model: {runtime.model}")
     print(f"  API key loaded: {'yes' if api_key else 'no'}")
+    print(f"  Provider config: {config_path}")
     print("  Keep this window open while using the Chrome extension.")
     try:
         httpd.serve_forever()

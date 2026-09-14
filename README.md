@@ -146,6 +146,99 @@ Codex AI（质量优先）
 
 Edge 是否支持本地翻译取决于 Edge 版本和系统语言包。如果 Edge 不支持，自动模式会自动回退到 AI 模式。
 
+## 接入专业翻译服务
+
+除了本地浏览器翻译和 Codex AI，还可以接入专业翻译服务：
+
+- DeepL
+- Microsoft Translator
+- Google Cloud Translation
+- LibreTranslate
+
+翻译服务配置保存在本机，不会上传到 GitHub：
+
+```text
+~/Library/Application Support/ZoomCodexInterpreter/config.json
+```
+
+首次使用可以从示例复制：
+
+```bash
+mkdir -p "$HOME/Library/Application Support/ZoomCodexInterpreter"
+cp config.example.json "$HOME/Library/Application Support/ZoomCodexInterpreter/config.json"
+```
+
+然后编辑 `config.json`，填入对应 API Key。修改后需要重启 `server.py`。
+
+### DeepL
+
+```json
+"deepl": {
+  "apiKey": "你的 DeepL API Key",
+  "pro": false,
+  "endpoint": "https://api-free.deepl.com/v2/translate"
+}
+```
+
+如果使用 DeepL Pro，把 endpoint 改为：
+
+```text
+https://api.deepl.com/v2/translate
+```
+
+### Microsoft Translator
+
+```json
+"microsoft": {
+  "apiKey": "你的 Azure Translator Key",
+  "region": "eastasia",
+  "endpoint": "https://api.cognitive.microsofttranslator.com"
+}
+```
+
+`region` 需要和 Azure 资源的区域一致。
+
+### Google Cloud Translation
+
+```json
+"google": {
+  "apiKey": "你的 Google Cloud API Key",
+  "endpoint": "https://translation.googleapis.com/language/translate/v2"
+}
+```
+
+### LibreTranslate
+
+```json
+"libretranslate": {
+  "url": "http://localhost:5000",
+  "apiKey": ""
+}
+```
+
+如果有远程 LibreTranslate 服务，把 `url` 改成对应地址。
+
+### 自动回退顺序
+
+```json
+"fallbackOrder": ["deepl", "microsoft", "google", "libretranslate", "codex"]
+```
+
+推荐顺序：
+
+1. DeepL：准确性和语言自然度较好
+2. Microsoft Translator：稳定、语言覆盖广
+3. Google Cloud Translation：覆盖广、速度快
+4. LibreTranslate：本地或私有部署
+5. Codex AI：上下文和术语一致性最好
+
+编辑配置后，在扩展弹窗中选择：
+
+```text
+翻译引擎：AI / 云翻译
+AI / 云翻译服务：DeepL / Microsoft / Google / LibreTranslate / 自动选择
+```
+
 ## 在 Zoom 中使用
 
 1. 打开 Zoom 网页版会议
@@ -173,13 +266,13 @@ Edge 是否支持本地翻译取决于 Edge 版本和系统语言包。如果 Ed
 Chrome 用户：
 
 ```text
-dist/ZoomCodexInterpreter-chrome-v1.0.8.zip
+dist/ZoomCodexInterpreter-chrome-v1.0.9.zip
 ```
 
 Edge 用户：
 
 ```text
-dist/ZoomCodexInterpreter-edge-v1.0.8.zip
+dist/ZoomCodexInterpreter-edge-v1.0.9.zip
 ```
 
 对方解压后：
@@ -203,7 +296,7 @@ Edge：
 协作者需要完整项目：
 
 ```text
-dist/ZoomCodexInterpreter-full-v1.0.8.zip
+dist/ZoomCodexInterpreter-full-v1.0.9.zip
 ```
 
 ## 共享更新进度
@@ -220,7 +313,7 @@ git push -u origin main --tags
 之后：
 
 - 其他人可以 `git clone` 仓库并查看提交历史
-- 每次版本更新使用一个 Git 标签，例如 `v1.0.8`
+- 每次版本更新使用一个 Git 标签，例如 `v1.0.9`
 - 推送标签后，GitHub Actions 会自动创建 Release 并上传 ZIP
 
 ### 不使用 GitHub
@@ -234,13 +327,13 @@ git push -u origin main --tags
 会生成：
 
 ```text
-dist/ZoomCodexInterpreter-v1.0.8.bundle
+dist/ZoomCodexInterpreter-v1.0.9.bundle
 ```
 
 别人可以这样克隆：
 
 ```bash
-git clone ZoomCodexInterpreter-v1.0.8.bundle zoom-codex-interpreter
+git clone ZoomCodexInterpreter-v1.0.9.bundle zoom-codex-interpreter
 ```
 
 以后你提交新版本后重新生成 bundle，对方执行 `git pull` 即可查看更新历史。

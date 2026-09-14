@@ -3,6 +3,7 @@ const DEFAULTS = {
   sourceLang: "auto",
   targetLang: "zh-CN",
   translationEngine: "auto",
+  serverProvider: "auto",
   translationStyle: "natural",
   showOriginal: true,
   speakTranslation: false,
@@ -45,6 +46,8 @@ const elements = {
   sourceLang: document.querySelector("#source-lang"),
   targetLang: document.querySelector("#target-lang"),
   translationEngine: document.querySelector("#translation-engine"),
+  serverProvider: document.querySelector("#server-provider"),
+  providerHint: document.querySelector("#provider-hint"),
   translationStyle: document.querySelector("#translation-style"),
   fontSize: document.querySelector("#font-size"),
   fontSizeValue: document.querySelector("#font-size-value"),
@@ -137,6 +140,7 @@ async function refreshState() {
   renderSettings();
   await checkHealth();
   await refreshEngineStatus();
+  await refreshProviderStatus();
   await checkForUpdates(false);
 }
 
@@ -146,6 +150,7 @@ function renderSettings() {
   elements.sourceLang.value = settings.sourceLang;
   elements.targetLang.value = settings.targetLang;
   elements.translationEngine.value = settings.translationEngine || "auto";
+  elements.serverProvider.value = settings.serverProvider || "auto";
   elements.translationStyle.value = settings.translationStyle || "natural";
   elements.fontSize.value = String(settings.fontSize || 22);
   elements.fontSizeValue.textContent = String(settings.fontSize || 22);
@@ -217,6 +222,58 @@ async function checkForUpdates(force = false) {
   }
   renderUpdateStatus(response);
   return response;
+}
+
+function providerLabel(provider) {
+  const labels = {
+    auto: "自动选择",
+    codex: "Codex AI",
+    deepl: "DeepL",
+    microsoft: "Microsoft Translator",
+    google: "Google Cloud Translation",
+    libretranslate: "LibreTranslate",
+  };
+  return labels[provider] || provider;
+}
+
+async function refreshProviderStatus() {
+  const response = await chrome.runtime.sendMessage({ type: "providers" });
+  const providers = Array.isArray(response?.providers) ? response.providers : [];
+  if (providers.length > 0) {
+    const current = settings.serverProvider || "auto";
+    elements.serverProvider.innerHTML = "";
+    for (const provider of providers) {
+      const option = document.createElement("option");
+      option.value = provider.id;
+      option.textContent = provider.configured
+        ? provider.name
+        : `${provider.name}（未配置）`;
+      option.disabled = provider.id !== "auto" && !provider.configured;
+      elements.serverProvider.appendChild(option);
+    }
+    if ([...elements.serverProvider.options].some((option) => option.value === current)) {
+      elements.serverProvider.value = current;
+    } else {
+      elements.serverProvider.value = "auto";
+      settings.serverProvider = "auto";
+    }
+  }
+
+  const selected = elements.serverProvider.value || "auto";
+  const selectedProvider = providers.find((provider) => provider.id === selected);
+  if (response?.ok === false) {
+    elements.providerHint.className = "engine-status error";
+    elements.providerHint.textContent = "本地服务未连接，AI / 云翻译不可用。";
+  } else if (selectedProvider && !selectedProvider.configured) {
+    elements.providerHint.className = "engine-status error";
+    elements.providerHint.textContent = `${providerLabel(selected)} 尚未配置，请编辑 server 的 config.json。`;
+  } else if (selectedProvider?.hint) {
+    elements.providerHint.className = "engine-status";
+    elements.providerHint.textContent = selectedProvider.hint;
+  } else {
+    elements.providerHint.className = "engine-status ok";
+    elements.providerHint.textContent = `${providerLabel(selected)} 已就绪。`;
+  }
 }
 
 async function refreshEngineStatus() {
@@ -292,6 +349,10 @@ elements.targetLang.addEventListener("change", () => saveSettings({ targetLang: 
 elements.translationEngine.addEventListener("change", async () => {
   await saveSettings({ translationEngine: elements.translationEngine.value });
   await refreshEngineStatus();
+});
+elements.serverProvider.addEventListener("change", async () => {
+  await saveSettings({ serverProvider: elements.serverProvider.value });
+  await refreshProviderStatus();
 });
 elements.translationStyle.addEventListener("change", () => saveSettings({ translationStyle: elements.translationStyle.value }));
 elements.fontSize.addEventListener("input", () => {

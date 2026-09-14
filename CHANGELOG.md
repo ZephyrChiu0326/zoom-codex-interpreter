@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.9
+
+- 新增 DeepL 专业翻译接入
+- 新增 Microsoft Translator 接入
+- 新增 Google Cloud Translation 接入
+- 新增 LibreTranslate 接入
+- 支持按顺序自动回退到下一个翻译服务
+- 扩展弹窗新增 AI / 云翻译服务选择
+- 本地 config.json 保存 API Key，不进入 Git 仓库
+
 ## v1.0.8
 
 - 新增 GitHub Release 自动更新检查

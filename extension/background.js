@@ -174,6 +174,26 @@ async function translateLocal(payload) {
   return { ok: false, unavailable: true, error: lastError?.message || "LOCAL_UNAVAILABLE" };
 }
 
+async function providers() {
+  try {
+    const response = await fetch(`${SERVER_BASE}/providers`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) {
+      throw new Error(data.error || `本地服务返回 HTTP ${response.status}`);
+    }
+    return data;
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      providers: [
+        { id: "auto", name: "自动选择", configured: true, hint: "" },
+        { id: "codex", name: "Codex AI", configured: true, hint: "" },
+      ],
+    };
+  }
+}
+
 async function health() {
   try {
     const response = await fetch(`${SERVER_BASE}/health`, { cache: "no-store" });
@@ -322,6 +342,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "getUpdateStatus") {
     getUpdateStatus().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "providers") {
+    providers().then(sendResponse);
     return true;
   }
 

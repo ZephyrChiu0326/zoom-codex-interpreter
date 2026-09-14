@@ -18,6 +18,7 @@
 
       <div id="notice" class="notice">正在检查本地翻译服务…</div>
       <div id="engine-status" class="engine-status"></div>
+      <div id="provider-hint" class="engine-status"></div>
       <div id="update-notice" class="update-notice hidden"></div>
 
       <section class="row">
@@ -38,7 +39,18 @@
           <select id="translation-engine">
             <option value="auto">自动（本地优先，AI 兜底）</option>
             <option value="local">本地翻译（无需大模型）</option>
-            <option value="ai">Codex AI（质量优先）</option>
+            <option value="ai">AI / 云翻译（质量优先）</option>
+          </select>
+        </label>
+        <label>
+          AI / 云翻译服务
+          <select id="server-provider">
+            <option value="auto">自动选择（按服务器顺序）</option>
+            <option value="codex">Codex AI</option>
+            <option value="deepl">DeepL</option>
+            <option value="microsoft">Microsoft Translator</option>
+            <option value="google">Google Cloud Translation</option>
+            <option value="libretranslate">LibreTranslate</option>
           </select>
         </label>
         <label>

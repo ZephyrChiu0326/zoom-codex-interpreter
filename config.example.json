@@ -1,0 +1,31 @@
+{
+  "defaultProvider": "auto",
+  "fallbackOrder": [
+    "deepl",
+    "microsoft",
+    "google",
+    "libretranslate",
+    "codex"
+  ],
+  "providers": {
+    "deepl": {
+      "apiKey": "",
+      "pro": false,
+      "endpoint": "https://api-free.deepl.com/v2/translate"
+    },
+    "microsoft": {
+      "apiKey": "",
+      "region": "eastasia",
+      "endpoint": "https://api.cognitive.microsofttranslator.com"
+    },
+    "google": {
+      "apiKey": "",
+      "endpoint": "https://translation.googleapis.com/language/translate/v2"
+    },
+    "libretranslate": {
+      "url": "",
+      "apiKey": ""
+    },
+    "codex": {}
+  }
+}

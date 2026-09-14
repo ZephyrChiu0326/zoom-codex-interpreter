@@ -1,10 +1,10 @@
 {
   "name": "Zoom Codex Interpreter",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "releaseDate": "2026-09-14",
-  "notes": "新增 GitHub Release 自动更新检查，扩展会提示新版本并链接到下载页面。",
-  "extensionDownload": "dist/ZoomCodexInterpreter-extension-v1.0.8.zip",
-  "fullDownload": "dist/ZoomCodexInterpreter-full-v1.0.8.zip",
-  "chromeDownload": "dist/ZoomCodexInterpreter-chrome-v1.0.8.zip",
-  "edgeDownload": "dist/ZoomCodexInterpreter-edge-v1.0.8.zip"
+  "notes": "新增 DeepL、Microsoft Translator、Google Cloud Translation、LibreTranslate 专业翻译服务接入和自动回退。",
+  "extensionDownload": "dist/ZoomCodexInterpreter-extension-v1.0.9.zip",
+  "fullDownload": "dist/ZoomCodexInterpreter-full-v1.0.9.zip",
+  "chromeDownload": "dist/ZoomCodexInterpreter-chrome-v1.0.9.zip",
+  "edgeDownload": "dist/ZoomCodexInterpreter-edge-v1.0.9.zip"
 }
