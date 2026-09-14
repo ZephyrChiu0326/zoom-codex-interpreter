@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Zoom Codex Interpreter",
+  "version": "1.0.5",
+  "description": "Translate Zoom web live captions in near real time using the local Codex model proxy.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://zoom.us/*",
+    "*://*.zoom.us/*",
+    "*://zoom.com/*",
+    "*://*.zoom.com/*",
+    "*://zoomgov.com/*",
+    "*://*.zoomgov.com/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Zoom Codex Interpreter",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://zoom.us/*",
+        "*://*.zoom.us/*",
+        "*://zoom.com/*",
+        "*://*.zoom.com/*",
+        "*://zoomgov.com/*",
+        "*://*.zoomgov.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ]
+}

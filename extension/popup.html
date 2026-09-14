@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zoom Codex Interpreter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="card">
+      <header>
+        <div>
+          <h1>Codex 同传</h1>
+          <p class="sub">Zoom 网页版实时字幕翻译</p>
+        </div>
+        <span id="server-dot" class="dot" title="本地服务状态"></span>
+      </header>
+
+      <div id="notice" class="notice">正在检查本地翻译服务…</div>
+
+      <section class="row">
+        <button id="toggle" class="primary">暂停</button>
+        <button id="pick">选择字幕区域</button>
+        <button id="diagnose">诊断字幕</button>
+        <button id="reset-selector">重置字幕区</button>
+        <button id="test">测试翻译</button>
+      </section>
+
+      <section class="grid">
+        <label>
+          源语言
+          <select id="source-lang"></select>
+        </label>
+        <label>
+          目标语言
+          <select id="target-lang"></select>
+        </label>
+        <label>
+          字幕风格
+          <select id="translation-style">
+            <option value="natural">自然口语</option>
+            <option value="concise">简洁短句</option>
+            <option value="literal">逐字准确</option>
+          </select>
+        </label>
+      </section>
+
+      <label class="field">
+        字幕字号：<span id="font-size-value">22</span> px
+        <input id="font-size" type="range" min="16" max="34" step="1" />
+      </label>
+
+      <section class="checks">
+        <label><input id="show-original" type="checkbox" /> 显示原文</label>
+        <label><input id="speak" type="checkbox" /> 朗读译文</label>
+        <label><input id="compact-mode" type="checkbox" /> 紧凑字幕条</label>
+      </section>
+
+      <label class="field">
+        字幕宽度：<span id="overlay-width-value">680</span> px
+        <input id="overlay-width" type="range" min="360" max="1000" step="20" />
+      </label>
+
+      <label class="field">
+        背景不透明度：<span id="overlay-opacity-value">72</span>%
+        <input id="overlay-opacity" type="range" min="20" max="100" step="1" />
+      </label>
+
+      <label class="field">
+        术语表/人名（一行一个）
+        <textarea id="glossary" rows="4" placeholder="roadmap = 路线图&#10;Alice = 爱丽丝"></textarea>
+      </label>
+
+      <label class="field">
+        会议背景/领域（可选）
+        <textarea id="meeting-context" rows="2" placeholder="例如：学术英语课堂；计算机科学；产品发布会"></textarea>
+      </label>
+
+      <div id="test-result" class="result"></div>
+      <pre id="diagnostic-result" class="result diagnostic hidden"></pre>
+
+      <footer>
+        <span>字幕只发送到本机 <code>127.0.0.1:8765</code></span>
+        <button id="health" class="link">重新检查服务</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

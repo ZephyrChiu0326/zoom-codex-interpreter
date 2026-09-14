@@ -1,0 +1,260 @@
+const DEFAULTS = {
+  enabled: true,
+  sourceLang: "auto",
+  targetLang: "zh-CN",
+  translationStyle: "natural",
+  showOriginal: true,
+  speakTranslation: false,
+  glossary: "",
+  meetingContext: "",
+  captionSelector: "",
+  compactMode: true,
+  overlayWidth: 680,
+  overlayOpacity: 0.72,
+  fontSize: 22,
+};
+
+const LANGUAGES = [
+  ["auto", "自动检测"],
+  ["zh-CN", "简体中文"],
+  ["zh-TW", "繁體中文"],
+  ["en", "English"],
+  ["ja", "日本語"],
+  ["ko", "한국어"],
+  ["es", "Español"],
+  ["fr", "Français"],
+  ["de", "Deutsch"],
+  ["pt", "Português"],
+  ["it", "Italiano"],
+  ["ru", "Русский"],
+  ["ar", "العربية"],
+];
+
+const elements = {
+  serverDot: document.querySelector("#server-dot"),
+  notice: document.querySelector("#notice"),
+  toggle: document.querySelector("#toggle"),
+  pick: document.querySelector("#pick"),
+  diagnose: document.querySelector("#diagnose"),
+  resetSelector: document.querySelector("#reset-selector"),
+  test: document.querySelector("#test"),
+  sourceLang: document.querySelector("#source-lang"),
+  targetLang: document.querySelector("#target-lang"),
+  translationStyle: document.querySelector("#translation-style"),
+  fontSize: document.querySelector("#font-size"),
+  fontSizeValue: document.querySelector("#font-size-value"),
+  compactMode: document.querySelector("#compact-mode"),
+  overlayWidth: document.querySelector("#overlay-width"),
+  overlayWidthValue: document.querySelector("#overlay-width-value"),
+  overlayOpacity: document.querySelector("#overlay-opacity"),
+  overlayOpacityValue: document.querySelector("#overlay-opacity-value"),
+  showOriginal: document.querySelector("#show-original"),
+  speak: document.querySelector("#speak"),
+  glossary: document.querySelector("#glossary"),
+  meetingContext: document.querySelector("#meeting-context"),
+  testResult: document.querySelector("#test-result"),
+  diagnosticResult: document.querySelector("#diagnostic-result"),
+  health: document.querySelector("#health"),
+};
+
+let settings = { ...DEFAULTS };
+let activeTabId = null;
+let isZoomPage = false;
+
+function fillSelect(select, includeAuto) {
+  select.innerHTML = "";
+  for (const [value, label] of LANGUAGES) {
+    if (!includeAuto && value === "auto") continue;
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+}
+
+function setNotice(text, state = "") {
+  elements.notice.textContent = text;
+  elements.notice.className = `notice ${state}`.trim();
+}
+
+function setServerState(ok) {
+  elements.serverDot.className = `dot ${ok ? "ok" : "error"}`;
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
+}
+
+async function sendToContent(message, options = {}) {
+  if (!activeTabId) return null;
+  try {
+    const target = options.allFrames ? {} : { frameId: 0 };
+    return await chrome.tabs.sendMessage(activeTabId, message, target);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function checkHealth() {
+  setNotice("正在检查本地翻译服务…");
+  const response = await chrome.runtime.sendMessage({ type: "health" });
+  if (response?.ok) {
+    setServerState(true);
+    setNotice(`本地服务已连接，模型：${response.model || "未知"}`, "ok");
+    return true;
+  }
+  setServerState(false);
+  setNotice(
+    `本地服务未连接：${response?.error || "请先启动 server.py"}。` +
+      " 详见 README 的“启动本地服务”。",
+    "error",
+  );
+  return false;
+}
+
+async function refreshState() {
+  const tab = await getActiveTab();
+  activeTabId = tab?.id ?? null;
+  isZoomPage = Boolean(tab?.url && /^https?:\/\/([^.]+\.)*zoom\.us\//i.test(tab.url));
+
+  const stored = await chrome.storage.sync.get(DEFAULTS);
+  settings = { ...DEFAULTS, ...(stored || {}) };
+
+  if (isZoomPage) {
+    const state = await sendToContent({ type: "getState" });
+    if (state?.ok) settings = { ...settings, ...state.settings };
+    setNotice(state?.connected ? "已检测到 Zoom 字幕区域。" : "请在 Zoom 页面点击“选择字幕区域”。", state?.connected ? "ok" : "");
+  } else {
+    setNotice("请先打开 Zoom 网页版。设置仍可修改，但字幕悬浮窗只在 Zoom 页面显示。");
+  }
+
+  renderSettings();
+  await checkHealth();
+}
+
+function renderSettings() {
+  elements.toggle.textContent = settings.enabled ? "暂停" : "开始";
+  elements.toggle.classList.toggle("paused", !settings.enabled);
+  elements.sourceLang.value = settings.sourceLang;
+  elements.targetLang.value = settings.targetLang;
+  elements.translationStyle.value = settings.translationStyle || "natural";
+  elements.fontSize.value = String(settings.fontSize || 22);
+  elements.fontSizeValue.textContent = String(settings.fontSize || 22);
+  elements.compactMode.checked = settings.compactMode !== false;
+  elements.overlayWidth.value = String(settings.overlayWidth || 680);
+  elements.overlayWidthValue.textContent = String(settings.overlayWidth || 680);
+  elements.overlayOpacity.value = String(Math.round((Number(settings.overlayOpacity) || 0.72) * 100));
+  elements.overlayOpacityValue.textContent = String(Math.round((Number(settings.overlayOpacity) || 0.72) * 100));
+  elements.showOriginal.checked = Boolean(settings.showOriginal);
+  elements.speak.checked = Boolean(settings.speakTranslation);
+  elements.glossary.value = settings.glossary || "";
+  elements.meetingContext.value = settings.meetingContext || "";
+}
+
+async function saveSettings(patch) {
+  settings = { ...settings, ...patch };
+  await chrome.storage.sync.set(patch);
+  if (isZoomPage) await sendToContent({ type: "updateSettings", patch });
+  renderSettings();
+}
+
+async function diagnoseCaptions() {
+  if (!isZoomPage) {
+    setNotice("请先在当前窗口打开 Zoom 网页版。", "error");
+    return;
+  }
+  elements.diagnosticResult.classList.remove("hidden");
+  elements.diagnosticResult.textContent = "正在扫描 Zoom 页面字幕 DOM…";
+  const response = await sendToContent({ type: "diagnose" });
+  if (!response?.ok) {
+    elements.diagnosticResult.textContent = `诊断失败：${response?.error || "无法连接到 Zoom 页面内容脚本"}`;
+    return;
+  }
+  elements.diagnosticResult.textContent = JSON.stringify(response, null, 2);
+}
+
+async function testTranslation() {
+  elements.testResult.className = "result";
+  elements.testResult.textContent = "正在调用本地 Codex 模型…";
+  const response = await chrome.runtime.sendMessage({
+    type: "translate",
+    payload: {
+      text: "Thanks for joining today's meeting. Let's review the roadmap.",
+      sourceLang: "en",
+      targetLang: settings.targetLang || "zh-CN",
+      translationStyle: settings.translationStyle || "natural",
+      glossary: settings.glossary || "",
+      meetingContext: settings.meetingContext || "",
+      context: [],
+    },
+  });
+  if (response?.ok) {
+    elements.testResult.textContent = response.translation;
+  } else {
+    elements.testResult.className = "result error";
+    elements.testResult.textContent = response?.error || "测试失败。";
+  }
+}
+
+elements.toggle.addEventListener("click", async () => {
+  await saveSettings({ enabled: !settings.enabled });
+  if (isZoomPage) await sendToContent({ type: "setEnabled", enabled: settings.enabled });
+});
+
+elements.pick.addEventListener("click", async () => {
+  if (!isZoomPage) {
+    setNotice("请先在当前窗口打开 Zoom 网页版。", "error");
+    return;
+  }
+  const response = await sendToContent({ type: "startPicker" }, { allFrames: true });
+  if (!response?.ok) setNotice("无法进入字幕选择模式，请刷新 Zoom 页面后重试。", "error");
+  window.close();
+});
+
+elements.test.addEventListener("click", testTranslation);
+elements.diagnose.addEventListener("click", diagnoseCaptions);
+elements.resetSelector.addEventListener("click", async () => {
+  if (!isZoomPage) {
+    setNotice("请先在当前窗口打开 Zoom 网页版。", "error");
+    return;
+  }
+  await saveSettings({ captionSelector: "" });
+  const response = await sendToContent({ type: "resetDetection" }, { allFrames: true });
+  setNotice(response?.ok ? "已重置字幕区域，正在重新检测。" : "重置失败，请刷新 Zoom 页面。", response?.ok ? "ok" : "error");
+});
+elements.health.addEventListener("click", checkHealth);
+elements.sourceLang.addEventListener("change", () => saveSettings({ sourceLang: elements.sourceLang.value }));
+elements.targetLang.addEventListener("change", () => saveSettings({ targetLang: elements.targetLang.value }));
+elements.translationStyle.addEventListener("change", () => saveSettings({ translationStyle: elements.translationStyle.value }));
+elements.fontSize.addEventListener("input", () => {
+  elements.fontSizeValue.textContent = elements.fontSize.value;
+  window.clearTimeout(elements.fontSize._saveTimer);
+  elements.fontSize._saveTimer = window.setTimeout(() => saveSettings({ fontSize: Number(elements.fontSize.value) }), 150);
+});
+elements.compactMode.addEventListener("change", () => saveSettings({ compactMode: elements.compactMode.checked }));
+elements.overlayWidth.addEventListener("input", () => {
+  elements.overlayWidthValue.textContent = elements.overlayWidth.value;
+  window.clearTimeout(elements.overlayWidth._saveTimer);
+  elements.overlayWidth._saveTimer = window.setTimeout(() => saveSettings({ overlayWidth: Number(elements.overlayWidth.value) }), 150);
+});
+elements.overlayOpacity.addEventListener("input", () => {
+  const percent = Number(elements.overlayOpacity.value);
+  elements.overlayOpacityValue.textContent = String(percent);
+  window.clearTimeout(elements.overlayOpacity._saveTimer);
+  elements.overlayOpacity._saveTimer = window.setTimeout(() => saveSettings({ overlayOpacity: percent / 100 }), 150);
+});
+elements.showOriginal.addEventListener("change", () => saveSettings({ showOriginal: elements.showOriginal.checked }));
+elements.speak.addEventListener("change", () => saveSettings({ speakTranslation: elements.speak.checked }));
+elements.glossary.addEventListener("input", () => {
+  window.clearTimeout(elements.glossary._saveTimer);
+  elements.glossary._saveTimer = window.setTimeout(() => saveSettings({ glossary: elements.glossary.value.trim() }), 450);
+});
+elements.meetingContext.addEventListener("input", () => {
+  window.clearTimeout(elements.meetingContext._saveTimer);
+  elements.meetingContext._saveTimer = window.setTimeout(() => saveSettings({ meetingContext: elements.meetingContext.value.trim() }), 450);
+});
+
+fillSelect(elements.sourceLang, true);
+fillSelect(elements.targetLang, false);
+refreshState();

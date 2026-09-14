@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.crx
+*.pem
+.DS_Store
+dist/
+*.log

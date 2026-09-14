@@ -1,0 +1,8 @@
+{
+  "name": "Zoom Codex Interpreter",
+  "version": "1.0.5",
+  "releaseDate": "2026-09-14",
+  "notes": "新增紧凑字幕条、字幕风格、会议背景与术语表优化。",
+  "extensionDownload": "dist/ZoomCodexInterpreter-extension-v1.0.5.zip",
+  "fullDownload": "dist/ZoomCodexInterpreter-full-v1.0.5.zip"
+}
